@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
- <b>Burp's API/MCP is LIMITED - reburp is a Burp Suite extension that exposes the full Montoya API as a local openapi REST API, optimized for your AI agents.</b>
+ <b>Burp's API/MCP is LIMITED - reburp is a Burp Suite extension that exposes the full Montoya API as a locally served openapi REST API, optimized for your AI agents.</b>
 </p>
 
 <p align="center">
