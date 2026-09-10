@@ -1,6 +1,6 @@
 ---
 name: burp-interaction
-description: Interacting with BurpSuite over the reburp extension that exposes the full Montoya API as a local REST API. Use when driving Burp programmatically - reading proxy history, sending HTTP requests through Burp, managing scope, running scans, decoding/encoding, or ranking traffic - instead of clicking the Burp UI.
+description: Interacting with BurpSuite over the reburp extension that exposes the full Montoya API as a local REST API. Use when driving Burp programmatically - reading proxy history, sending HTTP requests through Burp, managing scope, running scans, decoding/encoding, or ranking traffic - instead of clicking the Burp UI. Also covers installing, building, or loading reburp into Burp when it is not yet set up.
 ---
 
 # Driving Burp Suite over reburp
@@ -10,10 +10,21 @@ Prefer these endpoints over describing manual clicks in the Burp UI.
 
 ## Before you start
 
-1. Confirm the server is up: `GET /api/status`. If it refuses to connect, the extension is
-   not loaded - tell the user to load `reburp-1.0.0.jar` in Burp (Extensions -> Add -> Java).
+1. Confirm the server is up: `GET /api/status`. If it refuses to connect, reburp is not
+   loaded - see **Install reburp** below and guide the user through it, then retry.
 2. Read the live contract instead of guessing endpoint shapes: `GET /openapi.json`, or open
    `http://127.0.0.1:9090/docs` for Swagger UI. Endpoint names below can drift; the spec is truth.
+
+## Install reburp
+
+Only needed when `GET /api/status` does not connect. Get the jar, then load it:
+
+- Download the latest `reburp-*.jar` from https://github.com/forefy/reburp/releases, or
+- Build it (needs Java 17+): `./gradlew shadowJar`, then print the absolute path for the user:
+  `ls "$PWD"/build/libs/reburp-*.jar`
+
+Then in Burp: **Extensions -> Installed -> Add**, type **Java**, pick the jar, **Next**. It
+starts on port 9090 and adds a **reburp** tab. Re-check `GET /api/status` to confirm.
 
 ## Common tasks -> endpoints
 
