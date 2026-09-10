@@ -73,6 +73,13 @@ JAVA_HOME=/path/to/jdk17 ./gradlew shadowJar
 
 A **reburp** tab appears in Burp showing every REST call as it happens.
 
+<p align="center">
+  <img src="static/reburp-tab.webp" alt="The reburp tab in Burp Suite, listing REST calls with method, status, timing and path, and the selected call's request and response below" title="The reburp tab" width="700">
+</p>
+
+Each row is one REST call. Selecting it shows the API request and response, plus the request
+and response reburp sent to the target on your behalf.
+
 ## API docs
 
 Once loaded, open in your browser:
