@@ -23,7 +23,6 @@ jobs:
 
       - name: Install Gradle
         uses: gradle/actions/setup-gradle@v4
-        with:
 
       - name: Build extension jar
         run: ./gradlew shadowJar --no-daemon
