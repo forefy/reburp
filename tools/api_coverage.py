@@ -115,6 +115,16 @@ UNMAPPABLE = [
      "Unreachable in this API version. Nothing in Montoya returns a LoggerHttpRequestResponse "
      "or LoggerCaptureHttpRequestResponse, and MontoyaApi has no logger() accessor, so an "
      "extension cannot obtain an instance to call these on."),
+
+    (r"^burp\.api\.montoya\.http\.execution\.(RequestSource|SourcedRequest)$",
+     "Pull-based request source backed by an in-process Java Iterator/Stream (RequestSource) "
+     "and its per-item wrapper (SourcedRequest). Neither is representable as REST data; queue "
+     "requests explicitly via POST /api/http/engine/{id}/queue instead."),
+
+    (r"^burp\.api\.montoya\.http\.execution\.(CompletionHandler|ResponseHandler)$",
+     "Callback contracts the engine invokes on Burp's own threads with extension-supplied "
+     "code. reburp drives the engine by polling stats/lifecycle and collecting results over "
+     "REST rather than handing Burp a handler."),
 ]
 
 

@@ -985,3 +985,47 @@ data class GenerateChainResponse(
     val imported: Boolean,
     val import_errors: List<String> = emptyList()
 )
+
+// ── Request execution engine (Montoya 2026.x http.execution) ─────────────────
+@Serializable
+data class EngineRequestItem(
+    val host: String,
+    val port: Int = 443,
+    val use_https: Boolean = true,
+    val request: String? = null,
+    val method: String? = null,
+    val path: String? = null,
+    val headers: Map<String, String>? = null,
+    val body: JsonElement? = null,
+    val label: String? = null
+)
+@Serializable
+data class CreateEngineRequest(
+    val name: String? = null,
+    val concurrent_request_limit: Int? = null,
+    val throttle_ms: Long? = null,
+    val max_retries: Int? = null,
+    /** Attach to an already-created named resource pool instead of building one. */
+    val resource_pool_name: String? = null,
+    /** Use Burp's shared default resource pool. */
+    val default_pool: Boolean = false
+)
+@Serializable data class EngineCreated(val engine_id: String, val name: String? = null)
+@Serializable data class QueueRequestsRequest(val requests: List<EngineRequestItem>)
+@Serializable data class QueuedResponse(val id: String, val queued: Int)
+@Serializable data class SendAllRequest(val timeout_ms: Long? = null)
+@Serializable data class ExecutionCreated(val execution_id: String)
+@Serializable data class ExecutionStatsDto(
+    val requested: Int, val completed: Int, val failed: Int,
+    val in_flight: Int, val pending: Int, val elapsed_ms: Long
+)
+@Serializable data class FinishedDto(val finished: Boolean)
+@Serializable data class RequestResultDto(val label: String?, val status: String, val request_response: HttpEntryDto?)
+@Serializable data class ExecutionResultDto(
+    val cancelled: Boolean,
+    val timed_out: Boolean,
+    val stats: ExecutionStatsDto,
+    val results: List<RequestResultDto>
+)
+@Serializable data class AwaitRequest(val timeout_ms: Long? = 30000, val include_body: Boolean = true)
+@Serializable data class EngineListDto(val engines: List<String>, val executions: List<String>)

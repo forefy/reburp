@@ -47,13 +47,15 @@ assistant can drive Burp directly.
 ## Install
 
 Grab the latest `reburp-*.jar` from [Releases](https://github.com/forefy/reburp/releases), or
-build it from source (requires Java 17+):
+build it from source (requires Java 17+). reburp is built against **Burp Suite 2026.7**
+(Montoya `2026.7`); that is the minimum Burp version. Users on an older Burp should use an
+earlier reburp release from the [Releases](https://github.com/forefy/reburp/releases) page:
 
 ```bash
 git clone https://github.com/forefy/reburp.git
 cd reburp
 ./gradlew shadowJar
-# Output: build/libs/reburp-1.0.1.jar
+# Output: build/libs/reburp-1.1.0.jar
 ```
 
 If your `JAVA_HOME` isn't set, point it at your JDK:
@@ -66,7 +68,7 @@ JAVA_HOME=/path/to/jdk17 ./gradlew shadowJar
 
 1. Open Burp Suite → **Extensions** → **Installed** → **Add**
 2. Extension type: **Java**
-3. Extension file: `build/libs/reburp-1.0.1.jar`
+3. Extension file: `build/libs/reburp-1.1.0.jar`
 4. Click **Next** - the extension starts automatically on port **9090**
 
 A **reburp** tab appears in Burp showing every REST call as it happens.
@@ -93,6 +95,7 @@ The spec is the source of truth for request and response shapes.
 | Scanner | `/api/scanner/` | Issues, start audit/crawl, task status (Pro only) |
 | Collaborator | `/api/collaborator/` | Generate payloads, poll interactions (Pro only) |
 | Repeater / Intruder | `/api/repeater/`, `/api/intruder/` | Send requests to Repeater and Intruder |
+| Request Engine | `/api/http/engine/` | High-throughput async request engine: resource pools, concurrency limit, throttle, retries, live stats, pause/resume/cancel, results (Burp 2026.x) |
 | Config | `/api/config/` | Get/set project & user options, task engine state |
 | Match & Replace | `/api/proxy/match-replace/` | List, add, remove proxy match-and-replace rules |
 | Sessions | `/api/sessions/` | List and manage session-handling rules |

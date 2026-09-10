@@ -7,7 +7,7 @@ plugins {
 }
 
 group = "com.reburp"
-version = "1.0.1"
+version = "1.1.0"
 
 repositories {
     mavenCentral()
@@ -15,7 +15,7 @@ repositories {
 
 dependencies {
     // Burp Montoya API - provided by Burp Suite at runtime
-    compileOnly("net.portswigger.burp.extensions:montoya-api:2025.12")
+    compileOnly("net.portswigger.burp.extensions:montoya-api:2026.7")
 
     // Ktor HTTP server (Netty engine)
     implementation("io.ktor:ktor-server-core:3.1.3")
@@ -37,7 +37,7 @@ dependencies {
     implementation("org.slf4j:slf4j-simple:2.0.16")
 
     testImplementation(kotlin("test"))
-    testImplementation("net.portswigger.burp.extensions:montoya-api:2025.12")
+    testImplementation("net.portswigger.burp.extensions:montoya-api:2026.7")
 }
 
 java {

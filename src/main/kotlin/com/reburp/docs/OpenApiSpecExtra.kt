@@ -32,7 +32,8 @@ internal fun extraTags(): String = joinFragments(
         """{ "name": "Events",       "description": "Passive traffic observers and the events they capture" }""",
         // Declared here rather than in OpenApiSpec.kt's own tag list, which omitted it even
         // though its WebSocket operations were already tagged with it.
-        """{ "name": "WebSocket Client", "description": "Outbound WebSocket connections opened by this extension" }"""
+        """{ "name": "WebSocket Client", "description": "Outbound WebSocket connections opened by this extension" }""",
+        """{ "name": "Request Engine", "description": "High-throughput async request execution engine (Burp 2026.x http.execution)" }"""
     )
 )
 
@@ -46,7 +47,8 @@ internal fun extraPaths(): String = joinFragments(
         extensionDataPaths(),
         corePaths(),
         messagePaths(),
-        eventsPaths()
+        eventsPaths(),
+        requestEnginePaths()
     )
 )
 
@@ -56,6 +58,7 @@ internal fun extraSchemas(): String = joinFragments(
         extensionDataSchemas(),
         coreSchemas(),
         messageSchemas(),
-        eventsSchemas()
+        eventsSchemas(),
+        requestEngineSchemas()
     )
 )
