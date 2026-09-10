@@ -47,9 +47,19 @@ assistant can drive Burp directly.
 ## Install
 
 Grab the latest `reburp-*.jar` from [Releases](https://github.com/forefy/reburp/releases), or
-build it from source (requires Java 17+). reburp is built against **Burp Suite 2026.7**
-(Montoya `2026.7`); that is the minimum Burp version. Users on an older Burp should use an
-earlier reburp release from the [Releases](https://github.com/forefy/reburp/releases) page:
+build it from source (requires Java 17+).
+
+### Compatibility
+
+Each reburp release is built against a minimum Burp Suite (Montoya) version. On an older Burp,
+grab the matching jar from [Releases](https://github.com/forefy/reburp/releases).
+
+| reburp | Minimum Burp Suite (Montoya) |
+|--------|------------------------------|
+| [1.1.0](https://github.com/forefy/reburp/releases/tag/v1.1.0) | 2026.7 |
+| [1.0.x](https://github.com/forefy/reburp/releases/tag/v1.0.1) | 2025.12 |
+
+### Build from source
 
 ```bash
 git clone https://github.com/forefy/reburp.git
@@ -74,7 +84,7 @@ JAVA_HOME=/path/to/jdk17 ./gradlew shadowJar
 A **reburp** tab appears in Burp showing every REST call as it happens.
 
 <p align="center">
-  <img src="static/reburp-tab.webp" alt="The reburp tab in Burp Suite, listing REST calls with method, status, timing and path, and the selected call's request and response below" title="The reburp tab" width="700">
+  <img src="static/reburp-in-action.png" alt="The reburp tab in Burp Suite: an API Log of GET, POST and DELETE calls with method, status, timing, path and AI notes; the selected call's API request and response below; and Burp's extension output showing reburp listening on localhost:9090" title="reburp in action" width="700">
 </p>
 
 Each row is one REST call. Selecting it shows the API request and response, plus the request
@@ -164,29 +174,9 @@ only when you accept that. Every invocation is written to the extension output t
 
 ## API coverage
 
-The claim that this exposes the whole Montoya API is checked mechanically rather than asserted:
-
-```bash
-python3 tools/api_coverage.py
-```
-
-It enumerates every method Montoya declares, subtracts the ones that cannot be represented over
-REST (each with a stated reason, listed by `--unmapped`), and exits non-zero if anything mappable
-is unreferenced. `--list` prints the gaps. Run it after upgrading the Montoya dependency: a new
-Burp release that adds methods will fail the check until they are either exposed or explicitly
-classified. The CI [build workflow](.github/workflows/build.yml) runs it on every push.
-
-Name matching is generous, so a clean run shows the surface is wired up rather than that every
-endpoint behaves. For that, load the extension and run the endpoints for real:
-
-```bash
-python3 tools/smoke_test.py
-```
-
-Roughly a third of the declared API is not REST-mappable. The main groups are the Swing user
-interface, callback contracts that Burp invokes on its own threads, and registrations that take
-extension-supplied code rather than data. Two types, `AttackConfiguration` and the `logger`
-package, are unreachable in this API version: nothing in Montoya returns them.
+The "full Montoya API" claim is verified mechanically by [`tools/api_coverage.py`](tools/api_coverage.py),
+which the CI [build workflow](.github/workflows/build.yml) runs on every push and fails if any mappable
+method is left unexposed. Behaviour is exercised separately by `tools/smoke_test.py` against a loaded extension.
 
 ## Notes
 
