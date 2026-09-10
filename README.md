@@ -22,7 +22,6 @@
 <p align="center">
  <a href="https://github.com/forefy/reburp/issues/new/choose" title="reburp Issues">Issues</a>
  | <a href="https://github.com/forefy/reburp/discussions" title="reburp Discussions">Discussions</a>
- | <a href="https://forefy.com/aisecurity" title="Forefy AI Security">AI Security Registry</a>
 </p>
 
 ## What is reburp
