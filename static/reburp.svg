@@ -1,0 +1,80 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 290 260" width="290" height="260">
+  <!-- reburp mascot: a smug orange frog swallowing API calls back into Burp -->
+  <defs>
+    <clipPath id="eyeL"><circle cx="86" cy="70" r="19"/></clipPath>
+    <clipPath id="eyeR"><circle cx="174" cy="70" r="19"/></clipPath>
+    <linearGradient id="body" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FF7A33"/>
+      <stop offset="1" stop-color="#E8531A"/>
+    </linearGradient>
+    <linearGradient id="sac" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFF1E3"/>
+      <stop offset="1" stop-color="#FFD5B4"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Drop shadow -->
+  <ellipse cx="130" cy="248" rx="78" ry="8" fill="#00000020"/>
+
+  <!-- Incoming calls: waves and chevron pointing INTO the frog (the "reverse" in reburp) -->
+  <g fill="none" stroke="#1FB2A6" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M254 76 Q284 122 254 168" stroke-width="7" opacity="0.35"/>
+    <path d="M238 88 Q260 122 238 156" stroke-width="7" opacity="0.6"/>
+    <path d="M224 100 Q238 122 224 144" stroke-width="7"/>
+    <polyline points="222,108 208,122 222,136" stroke-width="7"/>
+  </g>
+
+  <!-- Back feet -->
+  <g fill="#D4481A">
+    <ellipse cx="70" cy="232" rx="30" ry="12"/>
+    <ellipse cx="190" cy="232" rx="30" ry="12"/>
+    <circle cx="46" cy="236" r="6"/><circle cx="62" cy="240" r="6"/><circle cx="80" cy="240" r="6"/>
+    <circle cx="180" cy="240" r="6"/><circle cx="198" cy="240" r="6"/><circle cx="214" cy="236" r="6"/>
+  </g>
+
+  <!-- Body -->
+  <ellipse cx="130" cy="170" rx="80" ry="68" fill="url(#body)"/>
+  <!-- Belly -->
+  <ellipse cx="130" cy="186" rx="50" ry="42" fill="#FFD9B8"/>
+  <!-- Belly spots -->
+  <g fill="#F2A36B" opacity="0.5">
+    <circle cx="106" cy="196" r="4"/><circle cx="154" cy="200" r="4"/><circle cx="130" cy="214" r="3.5"/>
+  </g>
+
+  <!-- Head -->
+  <ellipse cx="130" cy="108" rx="78" ry="50" fill="url(#body)"/>
+
+  <!-- Eye stalks -->
+  <circle cx="86" cy="70" r="27" fill="#FF7A33"/>
+  <circle cx="174" cy="70" r="27" fill="#FF7A33"/>
+  <!-- Eyes -->
+  <circle cx="86" cy="70" r="19" fill="#FFFFFF"/>
+  <circle cx="174" cy="70" r="19" fill="#FFFFFF"/>
+  <circle cx="91" cy="73" r="9.5" fill="#1B1B1B"/>
+  <circle cx="169" cy="73" r="9.5" fill="#1B1B1B"/>
+  <circle cx="94" cy="69" r="3" fill="#FFFFFF"/>
+  <circle cx="172" cy="69" r="3" fill="#FFFFFF"/>
+  <!-- Heavy eyelids: the smug half-squint -->
+  <rect x="60" y="44" width="52" height="19" fill="#D4481A" clip-path="url(#eyeL)"/>
+  <rect x="148" y="44" width="52" height="19" fill="#D4481A" clip-path="url(#eyeR)"/>
+  <path d="M68 63 Q86 60 104 63" stroke="#8A2E0C" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+  <path d="M156 63 Q174 60 192 63" stroke="#8A2E0C" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+
+  <!-- Nostrils -->
+  <circle cx="119" cy="102" r="2.6" fill="#8A2E0C"/>
+  <circle cx="141" cy="102" r="2.6" fill="#8A2E0C"/>
+
+  <!-- Mouth: wide smirk, slightly open on the right where the calls come in -->
+  <path d="M78 124 Q130 152 186 118" stroke="#8A2E0C" stroke-width="4.5" fill="none" stroke-linecap="round"/>
+  <path d="M170 128 Q182 128 186 118" stroke="#8A2E0C" stroke-width="4.5" fill="#B83A12" stroke-linejoin="round"/>
+
+  <!-- Throat sac inflated with JSON -->
+  <circle cx="130" cy="160" r="32" fill="url(#sac)" stroke="#F2A36B" stroke-width="3"/>
+  <text x="130" y="171" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="30" font-weight="700" fill="#8A2E0C">{ }</text>
+
+  <!-- Front hands resting on the belly -->
+  <g fill="#FF7A33" stroke="#D4481A" stroke-width="2">
+    <ellipse cx="84" cy="214" rx="16" ry="9"/>
+    <ellipse cx="176" cy="214" rx="16" ry="9"/>
+  </g>
+</svg>

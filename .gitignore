@@ -1,0 +1,14 @@
+.gradle/
+build/
+*.class
+*.jar
+out/
+.idea/
+*.iml
+.DS_Store
+TODO.md
+.kotlin/
+tools/.api-cache
+
+# keep the gradle wrapper jar (needed for ./gradlew)
+!gradle/wrapper/gradle-wrapper.jar

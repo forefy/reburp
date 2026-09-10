@@ -1,0 +1,35 @@
+name: release
+
+on:
+  push:
+    tags: [ "v*" ]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Install Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+
+      - name: Build extension jar
+        run: ./gradlew shadowJar --no-daemon
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: build/libs/reburp-*.jar
+          generate_release_notes: true
