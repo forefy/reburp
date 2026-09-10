@@ -192,7 +192,3 @@ package, are unreachable in this API version: nothing in Montoya returns them.
 Issues and pull requests are welcome. Please run `python3 tools/api_coverage.py` and
 `./gradlew shadowJar` before opening a PR. New route groups should ship with their OpenAPI fragment
 so the docs stay complete.
-
-## License
-
-[MIT](LICENSE)
