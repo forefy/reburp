@@ -153,6 +153,9 @@ class RestApiServer(private val api: MontoyaApi, val port: Int = 9090, private v
     }
 
     fun stop() {
-        engine?.stop(1_000, 5_000)
+        // Bounded shutdown so unloading the extension never hangs Burp, and null the engine
+        // so a repeated stop is a no-op.
+        runCatching { engine?.stop(1_000, 5_000) }
+        engine = null
     }
 }

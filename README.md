@@ -15,7 +15,6 @@
   <img alt="reburp commit activity" title="reburp commit activity" src="https://img.shields.io/github/commit-activity/m/forefy/reburp">
   <img alt="GitHub last commit" title="GitHub last commit" src="https://img.shields.io/github/last-commit/forefy/reburp">
   <a href="https://github.com/forefy/reburp/issues/new/choose"><img alt="Issues" title="Issues" src="https://img.shields.io/github/issues-raw/forefy/reburp"></a>
-  <img alt="License" title="License" src="https://img.shields.io/github/license/forefy/reburp">
   <a href="https://twitter.com/forefy"><img alt="Forefy Twitter" title="Forefy Twitter" src="https://img.shields.io/twitter/follow/forefy.svg?logo=twitter"></a>
 </p>
 
