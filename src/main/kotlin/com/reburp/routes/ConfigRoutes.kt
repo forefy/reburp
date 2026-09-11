@@ -90,16 +90,16 @@ fun Routing.configRoutes(api: MontoyaApi) {
         runCatching {
             val json = api.burpSuite().exportUserOptionsAsJson()
             val root = Json.parseToJsonElement(json).jsonObject
-            val exts = root["extender"]?.jsonObject?.get("extensions")?.jsonArray
+            val exts = root["user_options"]?.jsonObject?.get("extender")?.jsonObject?.get("extensions")?.jsonArray
+                ?: root["extender"]?.jsonObject?.get("extensions")?.jsonArray
                 ?: root["extensions"]?.jsonObject?.get("extensions")?.jsonArray
                 ?: JsonArray(emptyList())
             val result = exts.mapNotNull { it.jsonObject }.map { ext ->
                 buildJsonObject {
-                    put("name",    ext["name"]    ?: JsonPrimitive("unknown"))
-                    put("enabled", ext["loaded"]  ?: ext["enabled"] ?: JsonPrimitive(false))
-                    put("type",    ext["type"]    ?: JsonPrimitive("java"))
-                    put("file",    ext["filename"]?: ext["file"]    ?: JsonPrimitive(""))
-                    put("errors",  ext["errors"]  ?: JsonPrimitive(""))
+                    put("name",    ext["name"]          ?: JsonPrimitive("unknown"))
+                    put("enabled", ext["loaded"]        ?: ext["enabled"] ?: JsonPrimitive(false))
+                    put("type",    ext["extension_type"]?: ext["type"]    ?: JsonPrimitive("java"))
+                    put("file",    ext["extension_file"]?: ext["filename"]?: ext["file"] ?: JsonPrimitive(""))
                 }
             }
             call.respond(result)
