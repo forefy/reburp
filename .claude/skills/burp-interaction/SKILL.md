@@ -1,6 +1,7 @@
 ---
 name: burp-interaction
 description: Interacting with BurpSuite over the reburp extension that exposes the full Montoya API as a local REST API. Use when driving Burp programmatically - reading proxy history, sending HTTP requests through Burp, managing scope, running scans, decoding/encoding, or ranking traffic - instead of clicking the Burp UI. Also covers installing, building, or loading reburp into Burp when it is not yet set up.
+compatibility: Requires BurpSuite
 ---
 
 # Driving Burp Suite over reburp
