@@ -1701,8 +1701,7 @@ fun openApiJson(port: Int): String = """
                       "name":    { "type": "string" },
                       "enabled": { "type": "boolean" },
                       "type":    { "type": "string" },
-                      "file":    { "type": "string" },
-                      "errors":  { "type": "string" }
+                      "file":    { "type": "string" }
                     }
                   }
                 }
