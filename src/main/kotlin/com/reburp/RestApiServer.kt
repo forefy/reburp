@@ -80,41 +80,44 @@ class RestApiServer(private val api: MontoyaApi, val port: Int = 9090, private v
                 })
             }
 
-            routing {
-                if (activityLog != null) {
-                    intercept(ApplicationCallPipeline.Monitoring) {
-                        val method = call.request.httpMethod.value
-                        val path   = call.request.uri
+            // Registered on the application pipeline rather than inside routing(): the
+            // Route.intercept overload is deprecated, and this needs to see every call
+            // anyway, not just routed ones.
+            if (activityLog != null) {
+                intercept(ApplicationCallPipeline.Monitoring) {
+                    val method = call.request.httpMethod.value
+                    val path   = call.request.uri
 
-                        if (path in SKIP_PATHS || path.startsWith("/openapi")) {
-                            proceed()
-                            return@intercept
-                        }
-
-                        val start      = System.currentTimeMillis()
-                        val reqHeaders = call.request.headers.entries()
-                            .filter { (k, _) -> k.lowercase() !in setOf("accept-encoding", "user-agent", "connection") }
-                            .joinToString("\r\n") { (k, v) -> "$k: ${v.joinToString(", ")}" }
-                        val reqBody    = try { call.receiveText() } catch (_: Exception) { "" }
-
-                        // Extract session_id if the body is JSON and contains it
-                        val sessionId = runCatching {
-                            Json.parseToJsonElement(reqBody).jsonObject["session_id"]?.jsonPrimitive?.content
-                        }.getOrNull()
-
+                    if (path in SKIP_PATHS || path.startsWith("/openapi")) {
                         proceed()
-
-                        // Route may have self-logged PoC entries and marked this to skip
-                        if (call.attributes.getOrNull(skipLogAttr) == true) return@intercept
-
-                        val duration = System.currentTimeMillis() - start
-                        val status   = call.response.status()?.value ?: 0
-                        val respBody = call.attributes.getOrNull(responseBodyAttr) ?: ""
-
-                        activityLog.log(method, path, status, duration, reqHeaders, reqBody, respBody, sessionId)
+                        return@intercept
                     }
-                }
 
+                    val start      = System.currentTimeMillis()
+                    val reqHeaders = call.request.headers.entries()
+                        .filter { (k, _) -> k.lowercase() !in setOf("accept-encoding", "user-agent", "connection") }
+                        .joinToString("\r\n") { (k, v) -> "$k: ${v.joinToString(", ")}" }
+                    val reqBody    = try { call.receiveText() } catch (_: Exception) { "" }
+
+                    // Extract session_id if the body is JSON and contains it
+                    val sessionId = runCatching {
+                        Json.parseToJsonElement(reqBody).jsonObject["session_id"]?.jsonPrimitive?.content
+                    }.getOrNull()
+
+                    proceed()
+
+                    // Route may have self-logged PoC entries and marked this to skip
+                    if (call.attributes.getOrNull(skipLogAttr) == true) return@intercept
+
+                    val duration = System.currentTimeMillis() - start
+                    val status   = call.response.status()?.value ?: 0
+                    val respBody = call.attributes.getOrNull(responseBodyAttr) ?: ""
+
+                    activityLog.log(method, path, status, duration, reqHeaders, reqBody, respBody, sessionId)
+                }
+            }
+
+            routing {
                 docsRoutes(port)
                 statusRoutes(api, port)
                 proxyRoutes(api)
