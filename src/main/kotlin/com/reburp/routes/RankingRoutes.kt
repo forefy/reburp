@@ -17,7 +17,13 @@ data class RankInput(
     val offset: Int = 0,
     val algorithm: String? = null,
     val scope_only: Boolean = false,
-    val host: String? = null
+    val host: String? = null,
+    /**
+     * How many of the most recent filtered exchanges to score. Defaults to [DEFAULT_MAX_SCORED].
+     * Scoring is cheap, but Burp scores relative to the supplied set, so widening this changes
+     * the ranking as well as the cost. Capped at [MAX_SCORED_CEILING].
+     */
+    val max_scored: Int = DEFAULT_MAX_SCORED
 )
 
 @Serializable
@@ -34,9 +40,9 @@ data class RankedEntry(
 @Serializable
 data class RankResult(
     val algorithm: String,
-    /** How many exchanges were actually scored (the whole filtered set, subject to [MAX_SCORED]). */
+    /** How many exchanges were actually scored (the whole filtered set, subject to max_scored). */
     val considered: Int,
-    /** True when the filtered set exceeded [MAX_SCORED] and only the most recent were scored. */
+    /** True when the filtered set exceeded max_scored and only the most recent were scored. */
     val truncated: Boolean,
     val ranked: List<RankedEntry>
 )
@@ -46,7 +52,10 @@ data class RankResult(
  * Scores are relative to the supplied set, so this also bounds how much the
  * set can drift between calls. The most recent entries are kept.
  */
-private const val MAX_SCORED = 2000
+const val DEFAULT_MAX_SCORED = 2000
+
+/** Upper bound on max_scored, so one call cannot tie up Burp's ranking engine indefinitely. */
+const val MAX_SCORED_CEILING = 50_000
 
 /** Identity-independent key for matching a ranked result back to its history entry. */
 private fun rankKey(rr: HttpRequestResponse): String =
@@ -59,7 +68,7 @@ private fun rankKey(rr: HttpRequestResponse): String =
  * supplied set, so the input set materially changes the scores. Filter deliberately
  * with [RankInput.scope_only] and [RankInput.host].
  *
- * The whole filtered set is scored (capped at [MAX_SCORED], most recent kept); results
+ * The whole filtered set is scored (capped at max_scored, most recent kept); results
  * are sorted by descending rank and only then paginated, so `offset`/`limit` select a
  * window into the *ranked* output rather than deciding which entries get scored.
  */
@@ -73,6 +82,10 @@ fun Routing.rankingRoutes(api: MontoyaApi) {
             if (req.limit < 1 || req.limit > 1000) {
                 return@post call.respond(HttpStatusCode.BadRequest,
                     ErrorResponse("Invalid 'limit': ${req.limit}. Must be between 1 and 1000."))
+            }
+            if (req.max_scored < 1 || req.max_scored > MAX_SCORED_CEILING) {
+                return@post call.respond(HttpStatusCode.BadRequest,
+                    ErrorResponse("Invalid 'max_scored': ${req.max_scored}. Must be between 1 and $MAX_SCORED_CEILING."))
             }
             if (req.offset < 0) {
                 return@post call.respond(HttpStatusCode.BadRequest,
@@ -98,8 +111,8 @@ fun Routing.rankingRoutes(api: MontoyaApi) {
             // relative to the supplied set, so slicing first would score each page
             // against a different population and could never yield a global top-N.
             // offset/limit are applied to the *sorted results* further down.
-            val truncated = history.size > MAX_SCORED
-            val window = if (truncated) history.takeLast(MAX_SCORED) else history
+            val truncated = history.size > req.max_scored
+            val window = if (truncated) history.takeLast(req.max_scored) else history
             if (window.isEmpty()) {
                 return@post call.respond(RankResult(algorithm?.name ?: "DEFAULT", 0, false, emptyList()))
             }

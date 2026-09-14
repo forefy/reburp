@@ -362,7 +362,7 @@ internal fun rankingPaths(): String = """
       "post": {
         "tags": ["Ranking"],
         "summary": "Rank proxy history by how anomalous each exchange looks",
-        "description": "**[Montoya API]** Scores proxy history with Burp's ranking engine and returns it sorted by descending rank (most anomalous first). The whole filtered set is scored - capped at the 2000 most recent entries, signalled by `truncated` - and `offset`/`limit` then page into the sorted results. Scores are relative to the supplied set, so narrowing `host` or `scope_only` changes the ranking - filter deliberately rather than ranking everything.",
+        "description": "**[Montoya API]** Scores proxy history with Burp's ranking engine and returns it sorted by descending rank (most anomalous first). The whole filtered set is scored - capped at the `max_scored` most recent entries (2000 by default, raise it for a large history), signalled by `truncated` - and `offset`/`limit` then page into the sorted results. Scores are relative to the supplied set, so narrowing `host` or `scope_only` changes the ranking - filter deliberately rather than ranking everything.",
         "operationId": "rankHistory",
         "x-api-source": "montoya",
         "requestBody": {

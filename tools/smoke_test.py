@@ -205,6 +205,16 @@ def main():
     print("\nRanking")
     c.check("rank history", "POST", "/api/utils/rank", {"limit": 25, "scope_only": False},
             verify=rank_is_usable)
+    # How much history gets scored is the caller's choice; it was a hardcoded 2000, which
+    # silently ranked a slice of a large capture. Burp scores relative to the scored set,
+    # so a wider scope is a different ranking, not just a slower one.
+    c.check("max_scored widens the scored set", "POST", "/api/utils/rank",
+            {"limit": 3, "max_scored": 50}, verify=lambda p: None
+            if p.get("considered", 0) <= 50 else f"scored {p.get('considered')} with max_scored=50")
+    c.check("rejects an out-of-range max_scored", "POST", "/api/utils/rank",
+            {"limit": 1, "max_scored": 0}, expect=400,
+            verify=lambda p: None if "max_scored" in (p or {}).get("error", "")
+            else f"unhelpful error: {p}")
 
     print("\nShell (expected off)")
     c.check("shell status", "GET", "/api/utils/shell/status",

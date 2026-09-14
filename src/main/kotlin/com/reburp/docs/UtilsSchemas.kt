@@ -198,7 +198,8 @@ internal fun utilsSchemas(): String = """
           "offset":     { "type": "integer", "default": 0, "description": "Pagination offset into the ranked results (not into raw history)" },
           "algorithm":  { "type": "string",  "nullable": true, "enum": ["ANOMALY"], "description": "Ranking algorithm. Omit for Burp's default." },
           "scope_only": { "type": "boolean", "default": false, "description": "Score only in-scope entries" },
-          "host":       { "type": "string",  "nullable": true, "description": "Restrict to a single hostname" }
+          "host":       { "type": "string",  "nullable": true, "description": "Restrict to a single hostname" },
+          "max_scored": { "type": "integer", "default": 2000, "minimum": 1, "maximum": 50000, "description": "How many of the most recent filtered exchanges to score. Raise it to rank more of a large history; `truncated` reports when the filter matched more than this. Scores are relative to the scored set, so changing this changes the ranking, not just the cost." }
         }
       },
 
