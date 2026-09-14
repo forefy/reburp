@@ -102,14 +102,29 @@ class Client:
 
 
 # ── Shared verifiers ─────────────────────────────────────────────────────────
+# A 200 with a well-formed body is not the same as a correct answer. /api/utils/rank
+# returned schema-valid JSON in capture order for several releases precisely because
+# nothing here looked past the status code. Assert on meaning, not shape.
+
+def wrote_something(payload):
+    """Endpoints whose only job is a side effect still owe us a confirmation."""
+    if payload.get("error"):
+        return f"reported an error: {payload['error']}"
+    return None if payload.get("message") else f"no confirmation message: {payload}"
+
+
+def observer_enabled(payload, name):
+    for o in payload.get("observers", []):
+        if o.get("name") == name:
+            return bool(o.get("enabled"))
+    return False
+
 
 def rank_is_usable(payload):
     """Ranking must come back ordered and joinable, not merely well-formed.
 
-    Guards two regressions this endpoint actually shipped with: results arriving
-    in capture order rather than by descending rank, and entries carrying no id
-    to join against proxy history. Both returned a schema-valid 200, so only an
-    assertion on meaning catches them.
+    Guards two regressions: results arriving in capture order rather than by
+    descending rank, and entries carrying no id to join against proxy history.
     """
     entries = payload.get("ranked", [])
     if not entries:
@@ -124,6 +139,18 @@ def rank_is_usable(payload):
         return f"{len(unresolved)}/{len(entries)} entries have no proxy-history id"
     if payload.get("truncated") and payload.get("considered", 0) == 0:
         return "truncated set but nothing considered"
+    return None
+
+
+def history_fields_present(payload):
+    if not isinstance(payload, list) or not payload:
+        return None  # empty history is not a failure
+    e = payload[0]
+    missing = [f for f in ("id", "mime_type", "http_service_string") if f not in e]
+    if missing:
+        return f"proxy history entry missing {', '.join(missing)}"
+    if e.get("request") is None:
+        return "include_body=true but request body was not returned"
     return None
 
 
@@ -168,7 +195,8 @@ def main():
             {"value": "ff", "from": "HEX", "to": "DECIMAL"},
             verify=lambda p: None if p.get("result") == "255" else f"got {p.get('result')}, wanted 255")
     c.check("decimal to radix 36", "POST", "/api/utils/number/convert-radix",
-            {"value": "255", "from": "DECIMAL", "radix": 36})
+            {"value": "255", "from": "DECIMAL", "radix": 36},
+            verify=lambda p: None if p.get("result") == "73" else f"got {p.get('result')}, wanted 73")
     c.check("rejects equal bases", "POST", "/api/utils/number/convert",
             {"value": "1", "from": "HEX", "to": "HEX"}, expect=400)
 
@@ -182,7 +210,9 @@ def main():
             verify=lambda p: None if p.get("value") == "ada" else f"got {p.get('value')}")
     c.check("inspect object", "POST", "/api/utils/json/inspect", {"json": '{"id":7,"admin":true}'},
             verify=lambda p: None if p.get("type") == "OBJECT" else f"got type {p.get('type')}")
-    c.check("normalize", "POST", "/api/utils/json/normalize", {"json": '{ "b" : 2,  "a":1 }'})
+    c.check("normalize", "POST", "/api/utils/json/normalize", {"json": '{ "b" : 2,  "a":1 }'},
+            verify=lambda p: None if p.get("result", "").find('"a"') < p.get("result", "").find('"b"')
+            else f"keys not normalised into order: {p.get('result')!r}")
 
     print("\nBytes")
     c.check("search literal", "POST", "/api/utils/bytes/search",
@@ -197,10 +227,13 @@ def main():
             verify=lambda p: None if p.get("text") == "bcd" else f"got {p.get('text')}")
     c.check("append", "POST", "/api/utils/bytes/append", {"data": "pay", "suffix": "load"},
             verify=lambda p: None if p.get("text") == "payload" else f"got {p.get('text')}")
-    c.check("alloc", "POST", "/api/utils/bytes/alloc", {"length": 8, "fill": 65, "at": 0})
+    c.check("alloc", "POST", "/api/utils/bytes/alloc", {"length": 8, "fill": 65, "at": 0},
+            verify=lambda p: None if p.get("length") == 8 and p.get("first_byte") == 65
+            else f"length {p.get('length')} first_byte {p.get('first_byte')}, wanted 8 and 65")
     c.check("inspect", "POST", "/api/utils/bytes/inspect", {"data": "hello"},
             verify=lambda p: None if p.get("length") == 5 else f"length {p.get('length')}")
-    c.check("convert", "POST", "/api/utils/bytes/convert", {"data": "hello"})
+    c.check("convert", "POST", "/api/utils/bytes/convert", {"data": "hello"},
+            verify=lambda p: None if p.get("base64") == "aGVsbG8=" else f"base64 {p.get('base64')!r}")
 
     print("\nRanking")
     c.check("rank history", "POST", "/api/utils/rank", {"limit": 25, "scope_only": False},
@@ -223,16 +256,22 @@ def main():
             {"command": ["echo", "hi"]}, expect=403, tolerate=(200,))
 
     print("\nLogging")
-    c.check("output", "POST", "/api/logging/output", {"message": "smoke test: output"})
-    c.check("error", "POST", "/api/logging/error", {"message": "smoke test: error"})
-    c.check("event", "POST", "/api/logging/event", {"level": "INFO", "message": "smoke test: event"})
-    c.check("stream", "POST", "/api/logging/stream", {"stream": "OUTPUT", "message": "smoke test: stream"})
+    c.check("output", "POST", "/api/logging/output", {"message": "smoke test: output"},
+            verify=wrote_something)
+    c.check("error", "POST", "/api/logging/error", {"message": "smoke test: error"},
+            verify=wrote_something)
+    c.check("event", "POST", "/api/logging/event", {"level": "INFO", "message": "smoke test: event"},
+            verify=wrote_something)
+    c.check("stream", "POST", "/api/logging/stream", {"stream": "OUTPUT", "message": "smoke test: stream"},
+            verify=wrote_something)
     c.check("rejects bad level", "POST", "/api/logging/event", {"level": "LOUD", "message": "x"}, expect=400)
 
     print("\nMeta")
     c.check("version", "GET", "/api/meta/version",
             verify=lambda p: None if p.get("build_number") else "no build number")
-    c.check("extension", "GET", "/api/meta/extension")
+    c.check("extension", "GET", "/api/meta/extension",
+            verify=lambda p: None if p.get("filename") and p.get("rest_port")
+            else f"extension self-description incomplete: {p}")
     c.check("enums", "GET", "/api/meta/enums",
             verify=lambda p: None if p.get("highlight_colors") else "no highlight colours")
 
@@ -243,7 +282,9 @@ def main():
             {"raw": raw_req, "host": "example.com", "port": 443, "secure": True},
             verify=lambda p: None if p.get("method") == "GET" else f"method {p.get('method')}, wanted GET")
     c.check("inspect request from url", "POST", "/api/http/message/inspect/request",
-            {"url": "https://example.com/admin?x=1"})
+            {"url": "https://example.com/admin?x=1"},
+            verify=lambda p: None if p.get("path_without_query") == "/admin" and p.get("query") == "x=1"
+            else f"url not decomposed: path={p.get('path_without_query')!r} query={p.get('query')!r}")
     c.check("inspect response", "POST", "/api/http/message/inspect/response",
             {"raw": raw_res, "keywords": ["html"]},
             verify=lambda p: None if p.get("status_code") == 200 else f"status {p.get('status_code')}, wanted 200")
@@ -252,27 +293,51 @@ def main():
 
     print("\nExtension data")
     c.check("write string", "PUT", "/api/extension-data/value",
-            {"type": "STRING", "key": "smoke_key", "value": "smoke_value"})
+            {"type": "STRING", "key": "smoke_key", "value": "smoke_value"},
+            verify=wrote_something)
     c.check("read string", "GET", "/api/extension-data/value?type=STRING&key=smoke_key",
             verify=lambda p: None if json.dumps(p).find("smoke_value") >= 0 else f"value not returned: {p}")
-    c.check("list root keys", "GET", "/api/extension-data")
-    c.check("delete string", "DELETE", "/api/extension-data/value?type=STRING&key=smoke_key")
+    c.check("list root keys", "GET", "/api/extension-data",
+            verify=lambda p: None if "smoke_key" in p.get("strings", [])
+            else f"just-written key absent from listing: strings={p.get('strings')}")
+    c.check("delete string", "DELETE", "/api/extension-data/value?type=STRING&key=smoke_key",
+            verify=wrote_something)
+    c.check("deleted string is really gone", "GET", "/api/extension-data",
+            verify=lambda p: None if "smoke_key" not in p.get("strings", [])
+            else "delete reported success but the key is still listed")
     c.check("rejects unknown type", "GET", "/api/extension-data/value?type=NOPE&key=x", expect=400)
 
     print("\nEvents")
-    c.check("list observers", "GET", "/api/events/observers")
-    c.check("enable http observer", "POST", "/api/events/observers/HTTP_REQUEST/enable")
-    c.check("read events", "GET", "/api/events?limit=5")
-    c.check("disable http observer", "POST", "/api/events/observers/HTTP_REQUEST/disable")
+    c.check("list observers", "GET", "/api/events/observers",
+            verify=lambda p: None if any(o.get("name") == "HTTP_REQUEST" for o in p.get("observers", []))
+            else "HTTP_REQUEST observer missing from the listing")
+    c.check("enable http observer", "POST", "/api/events/observers/HTTP_REQUEST/enable",
+            verify=wrote_something)
+    c.check("observer reports itself enabled", "GET", "/api/events/observers",
+            verify=lambda p: None if observer_enabled(p, "HTTP_REQUEST")
+            else "enable returned 200 but the observer still reads as disabled")
+    c.check("read events", "GET", "/api/events?limit=5",
+            verify=lambda p: None if p.get("limit") == 5 and isinstance(p.get("events"), list)
+            else f"event buffer shape unexpected: {p}")
+    c.check("disable http observer", "POST", "/api/events/observers/HTTP_REQUEST/disable",
+            verify=wrote_something)
+    c.check("observer reports itself disabled", "GET", "/api/events/observers",
+            verify=lambda p: None if not observer_enabled(p, "HTTP_REQUEST")
+            else "disable returned 200 but the observer still reads as enabled")
     c.check("rejects unknown observer", "POST", "/api/events/observers/NOPE/enable", expect=400)
 
     print("\nProxy and scanner additions")
-    c.check("proxy history carries new fields", "GET", "/api/proxy/history?limit=1&include_body=true")
+    c.check("proxy history carries new fields", "GET", "/api/proxy/history?limit=1&include_body=true",
+            verify=history_fields_present)
     c.check("crawl preview", "POST", "/api/scanner/crawl/preview",
-            {"seed_urls": ["https://example.com/"]}, tolerate=(403,))
+            {"seed_urls": ["https://example.com/"]}, tolerate=(403,),
+            verify=lambda p: None if p.get("count") == 1 and p.get("seed_urls") == ["https://example.com/"]
+            else f"seed urls not echoed back: {p}")
     c.check("issue definition", "POST", "/api/scanner/issue-definition",
             {"name": "Smoke finding", "background": "Background.", "remediation": "Fix it.",
-             "typical_severity": "LOW"})
+             "typical_severity": "LOW"},
+            verify=lambda p: None if p.get("name") == "Smoke finding" and p.get("typical_severity") == "LOW"
+            else f"issue definition not echoed back: {p}")
 
     print("\nExtensions")
     # These endpoints read Burp's config export, where a wrong lookup path yields an empty
@@ -340,8 +405,12 @@ def main():
                    "/api/proxy/intercept/rules/client",
                    {"match_type": "url", "match_relationship": "matches",
                     "match_condition": "reburp-smoke", "enabled": False}) is not None:
-            c.check("added intercept rule is removed again", "DELETE",
-                    f"/api/proxy/intercept/rules/client/{n}")
+            if c.check("added intercept rule is removed again", "DELETE",
+                       f"/api/proxy/intercept/rules/client/{n}") is not None:
+                c.check("intercept rule count is back to where it started", "GET",
+                        "/api/proxy/intercept/rules",
+                        verify=lambda p: None if len(p.get("client_rules", [])) == n
+                        else f"expected {n} client rules after cleanup, found {len(p.get('client_rules', []))}")
 
     print("\nMatch and replace")
     listed_mr = c.check("list match/replace rules", "GET", "/api/proxy/match-replace",
@@ -362,7 +431,11 @@ def main():
                         r.get("comment") == "reburp smoke test" and r.get("is_simple_match")
                         for r in p.get("rules", []))
                     else "is_simple_match lost - category mapping is broken")
-            c.check("delete the test rule", "DELETE", f"/api/proxy/match-replace/{idx}")
+            if c.check("delete the test rule", "DELETE", f"/api/proxy/match-replace/{idx}") is not None:
+                c.check("test rule is really gone", "GET", "/api/proxy/match-replace",
+                        verify=lambda p: None if not any(
+                            r.get("comment") == "reburp smoke test" for r in p.get("rules", []))
+                        else "delete returned 200 but the rule is still listed")
 
     print("\nResponse shapes match the spec")
     # The documented schema had drifted from what these endpoints return: proxy history was
