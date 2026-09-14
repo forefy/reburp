@@ -846,10 +846,20 @@ fun openApiJson(port: Int): String = """
         },
         "responses": {
           "200": {
-            "description": "OK - list of reflected parameter names",
+            "description": "OK - reflected parameters. Matching is plain substring, so short or low-entropy values (\"1\", \"no\") produce false positives; probe with a distinctive canary value for reliable results.",
             "content": {
               "application/json": {
-                "schema": { "type": "array", "items": { "type": "string" } }
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "name":  { "type": "string", "description": "Parameter name" },
+                      "type":  { "type": "string", "description": "Burp parameter type, e.g. URL, BODY, COOKIE" },
+                      "count": { "type": "string", "description": "Number of times the value appeared in the response (serialised as a string)" }
+                    }
+                  }
+                }
               }
             }
           },

@@ -194,8 +194,8 @@ internal fun utilsSchemas(): String = """
       "RankInput": {
         "type": "object",
         "properties": {
-          "limit":      { "type": "integer", "default": 100, "minimum": 1, "maximum": 1000, "description": "How many history entries to score" },
-          "offset":     { "type": "integer", "default": 0, "description": "Pagination offset into history" },
+          "limit":      { "type": "integer", "default": 100, "minimum": 1, "maximum": 1000, "description": "How many ranked results to return. The whole filtered set is scored regardless; this only sizes the returned page." },
+          "offset":     { "type": "integer", "default": 0, "description": "Pagination offset into the ranked results (not into raw history)" },
           "algorithm":  { "type": "string",  "nullable": true, "enum": ["ANOMALY"], "description": "Ranking algorithm. Omit for Burp's default." },
           "scope_only": { "type": "boolean", "default": false, "description": "Score only in-scope entries" },
           "host":       { "type": "string",  "nullable": true, "description": "Restrict to a single hostname" }
@@ -205,6 +205,7 @@ internal fun utilsSchemas(): String = """
       "RankedEntry": {
         "type": "object",
         "properties": {
+          "id":              { "type": "integer", "description": "Proxy-history id, for joining against /api/proxy/history. -1 if it could not be resolved." },
           "rank":            { "type": "integer", "description": "Burp's interest score. Higher means more anomalous." },
           "url":             { "type": "string",  "description": "Request URL" },
           "method":          { "type": "string",  "nullable": true, "description": "HTTP method" },
@@ -218,7 +219,8 @@ internal fun utilsSchemas(): String = """
         "properties": {
           "algorithm":  { "type": "string",  "description": "Algorithm actually used" },
           "considered": { "type": "integer", "description": "How many exchanges were scored" },
-          "ranked":     { "type": "array",   "items": { "${'$'}ref": "#/components/schemas/RankedEntry" }, "description": "Entries ordered by interest" }
+          "truncated":  { "type": "boolean", "description": "True when the filtered set exceeded the 2000-entry scoring cap and only the most recent were scored" },
+          "ranked":     { "type": "array",   "items": { "${'$'}ref": "#/components/schemas/RankedEntry" }, "description": "Entries sorted by descending rank (most anomalous first)" }
         }
       },
 
