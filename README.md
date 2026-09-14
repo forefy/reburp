@@ -80,8 +80,12 @@ grab the matching jar from [Releases](https://github.com/forefy/reburp/releases)
 git clone https://github.com/forefy/reburp.git
 cd reburp
 ./gradlew shadowJar
-# Output: build/libs/reburp-1.1.2.jar
+# Output: build/libs/reburp.jar  (plus a versioned copy, reburp-<version>.jar)
 ```
+
+Load `reburp.jar` rather than the versioned copy. Burp reloads an extension from the path
+it was loaded from, and the versioned name changes on every release, so the unversioned one
+keeps reloading after an upgrade instead of quietly leaving you on the previous build.
 
 If your `JAVA_HOME` isn't set, point it at your JDK:
 
@@ -93,7 +97,7 @@ JAVA_HOME=/path/to/jdk17 ./gradlew shadowJar
 
 1. Open Burp Suite → **Extensions** → **Installed** → **Add**
 2. Extension type: **Java**
-3. Extension file: `build/libs/reburp-1.1.2.jar`
+3. Extension file: `build/libs/reburp.jar` (or the `reburp-*.jar` you downloaded from Releases)
 4. Click **Next** - the extension starts automatically on port **9090**
 
 A **reburp** tab appears in Burp showing every REST call as it happens.

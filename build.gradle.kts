@@ -63,6 +63,17 @@ tasks.shadowJar {
     mergeServiceFiles()
     isZip64 = true
     configurations = listOf(project.configurations.runtimeClasspath.get())
+
+    // Burp reloads an extension by watching the path it was loaded from, and the released
+    // jar carries the version in its name, so every version bump silently left a locally
+    // loaded extension pointing at a stale file. Drop an unversioned copy next to it and
+    // load that one while developing: the path survives bumps, so reloading keeps working.
+    // The release workflow globs "reburp-*.jar", which does not match "reburp.jar", so this
+    // copy is never published as a release asset.
+    doLast {
+        val versioned = archiveFile.get().asFile
+        versioned.copyTo(File(versioned.parentFile, "reburp.jar"), overwrite = true)
+    }
 }
 
 tasks.build {

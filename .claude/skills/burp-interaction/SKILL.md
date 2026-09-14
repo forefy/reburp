@@ -22,7 +22,8 @@ Only needed when `GET /api/status` does not connect. Get the jar, then load it:
 
 - Download the latest `reburp-*.jar` from https://github.com/forefy/reburp/releases, or
 - Build it (needs Java 17+): `./gradlew shadowJar`, then print the absolute path for the user:
-  `ls "$PWD"/build/libs/reburp-*.jar`
+  `ls "$PWD"/build/libs/reburp.jar`. Prefer this unversioned jar over the versioned copy
+  beside it: its path survives a version bump, so Burp keeps reloading the extension.
 
 Then in Burp: **Extensions -> Installed -> Add**, type **Java**, pick the jar, **Next**. It
 starts on port 9090 and adds a **reburp** tab. Re-check `GET /api/status` to confirm.
