@@ -197,7 +197,9 @@ internal fun undocumentedSchemas(): String = """
           "method":  { "type": "string" },
           "path":    { "type": "string" },
           "headers": { "type": "object", "additionalProperties": { "type": "string" } },
-          "body":    { "type": "string", "nullable": true }
+          "body":    { "type": "string", "nullable": true },
+          "extract": { "type": "object", "additionalProperties": { "type": "string" }, "description": "Variable name to a jsonpath or regex pulled from this step's response, e.g. {\"token\": \"$.access\"}" },
+          "inject":  { "type": "object", "additionalProperties": { "type": "string" }, "description": "Variable name to the header it fills in the next step, e.g. {\"token\": \"Authorization: Bearer {token}\"}" }
         }
       },
 
@@ -233,6 +235,7 @@ internal fun undocumentedSchemas(): String = """
           "method":             { "type": "string", "default": "GET" },
           "path":               { "type": "string" },
           "headers":            { "type": "object", "nullable": true, "additionalProperties": { "type": "string" } },
+          "body":               { "description": "Request body. A JSON value is sent as JSON; a string is sent verbatim." },
           "auth_header":        { "type": "string", "description": "Header for the high-privilege user, e.g. Authorization: Bearer ..." },
           "second_auth_header": { "type": "string", "nullable": true, "description": "Header for a second, lower-privilege user. Enables privilege-escalation comparison." }
         }
@@ -248,6 +251,7 @@ internal fun undocumentedSchemas(): String = """
           "method":                { "type": "string", "default": "GET" },
           "path_template":         { "type": "string", "description": "Path containing the {word} placeholder, e.g. /api/{word}/" },
           "wordlist":              { "type": "array", "items": { "type": "string" } },
+          "body":                  { "description": "Request body sent with every attempt. A JSON value is sent as JSON; a string verbatim." },
           "headers":               { "type": "object", "nullable": true, "additionalProperties": { "type": "string" } },
           "filter_status":         { "type": "array", "items": { "type": "integer" }, "description": "Only report these status codes. Empty reports all." },
           "exclude_body_size":     { "type": "integer", "nullable": true },
@@ -268,7 +272,9 @@ internal fun undocumentedSchemas(): String = """
           "method":  { "type": "string", "default": "POST" },
           "path":    { "type": "string" },
           "headers": { "type": "object", "nullable": true, "additionalProperties": { "type": "string" } },
-          "count":   { "type": "integer", "default": 30, "description": "How many times to repeat the request" }
+          "body":    { "description": "Request body. A JSON value is sent as JSON; a string is sent verbatim." },
+          "count":   { "type": "integer", "default": 30, "description": "How many times to repeat the request" },
+          "concurrency": { "type": "integer", "default": 10, "description": "How many of those requests are in flight at once" }
         }
       }
 """

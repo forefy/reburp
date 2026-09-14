@@ -3393,6 +3393,7 @@ ${extraPaths()}
           "path":         { "type": "string",  "nullable": true, "description": "**Structured format** - Request path, e.g. `/api/users`. Requires `method`." },
           "headers":      { "type": "object",  "nullable": true, "additionalProperties": { "type": "string" }, "description": "**Structured format** - Extra request headers. Host is injected automatically. Content-Type and Content-Length are auto-set when `body` is present." },
           "body":         { "nullable": true,  "description": "**Structured format** - Request body. Pass a JSON object/array directly (no escaping needed), or a plain string.", "oneOf": [{ "type": "object" }, { "type": "array" }, { "type": "string" }] },
+          "session_id":    { "type": "string", "nullable": true, "description": "Tags this request with a reburp session label in the activity log. See POST /api/session." },
           "redirect_mode": { "type": "string", "nullable": true, "enum": ["ALWAYS", "NEVER", "SAME_HOST", "IN_SCOPE"], "description": "Redirect-following policy. null = Burp default." },
           "timeout_ms":   { "type": "integer", "nullable": true, "description": "Request timeout in milliseconds. null = Burp default." }
         }
@@ -3957,7 +3958,8 @@ ${extraPaths()}
         "required": ["messages"],
         "properties": {
           "messages":      { "type": "array", "items": { "${'$'}ref": "#/components/schemas/AiMessage" }, "minItems": 1, "description": "Conversation history (alternating user/assistant messages)" },
-          "system_prompt": { "type": "string", "nullable": true, "description": "Optional system prompt to configure AI behaviour" }
+          "system_prompt": { "type": "string", "nullable": true, "description": "Optional system prompt to configure AI behaviour" },
+          "temperature":   { "type": "number",  "nullable": true, "description": "Sampling temperature passed to Burp AI. Omit for Burp's default." }
         }
       },
 
