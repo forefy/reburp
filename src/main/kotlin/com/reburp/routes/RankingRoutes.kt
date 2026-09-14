@@ -148,7 +148,7 @@ fun Routing.rankingRoutes(api: MontoyaApi) {
                             url = runCatching { rr.request().url() }.getOrElse { "" },
                             method = runCatching { rr.request().method() }.getOrNull(),
                             status = runCatching { rr.response()?.statusCode()?.toInt() }.getOrNull(),
-                            response_length = runCatching { rr.response()?.toString()?.length ?: 0 }.getOrElse { 0 }
+                            response_length = runCatching { rr.response()?.toByteArray()?.length() }.getOrNull() ?: 0
                         )
                     }
                 )

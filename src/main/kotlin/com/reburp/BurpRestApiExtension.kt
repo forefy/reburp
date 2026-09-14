@@ -30,8 +30,27 @@ class BurpRestApiExtension : BurpExtension {
                 it is BindException || it.message?.contains("Address already in use", ignoreCase = true) == true
             }
             val msg = if (portInUse) {
-                "reburp could not start: port $port is already in use. Close whatever holds it " +
-                    "(often another Burp instance with reburp loaded), then reload the extension."
+                // Name the version already serving when we can reach it. A reload that fails
+                // to bind leaves the previous build answering, which looks exactly like a
+                // successful reload until someone compares versions.
+                // Short timeouts: this runs on Burp's extension-loading thread, so a socket
+                // that accepts but never answers must not hang the load.
+                val holder = runCatching {
+                    val conn = java.net.URL("http://127.0.0.1:$port/api/status").openConnection()
+                    conn.connectTimeout = 1000
+                    conn.readTimeout = 1000
+                    conn.getInputStream().use {
+                        Regex("\"extension_version\"\\s*:\\s*\"([^\"]+)\"")
+                            .find(it.readBytes().decodeToString())?.groupValues?.get(1)
+                    }
+                }.getOrNull()
+                if (holder != null)
+                    "reburp $REBURP_VERSION could not start: port $port is already served by reburp " +
+                        "$holder, which is still loaded. Unload that extension in Burp's Extensions tab " +
+                        "(untick it) and load this build again, otherwise Burp keeps answering with $holder."
+                else
+                    "reburp $REBURP_VERSION could not start: port $port is already in use. Close whatever " +
+                        "holds it (often another Burp instance with reburp loaded), then reload the extension."
             } else {
                 "reburp failed to start: ${e.message ?: e.javaClass.simpleName}"
             }

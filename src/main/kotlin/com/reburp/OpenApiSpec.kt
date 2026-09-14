@@ -856,7 +856,7 @@ fun openApiJson(port: Int): String = """
                     "properties": {
                       "name":  { "type": "string", "description": "Parameter name" },
                       "type":  { "type": "string", "description": "Burp parameter type, e.g. URL, BODY, COOKIE" },
-                      "count": { "type": "string", "description": "Number of times the value appeared in the response (serialised as a string)" }
+                      "count": { "type": "integer", "description": "Number of times the value appeared in the response" }
                     }
                   }
                 }

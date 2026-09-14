@@ -257,7 +257,7 @@ fun Routing.httpRoutes(api: MontoyaApi, activityLog: ActivityLogTab? = null) {
                     val value = param.value()
                     if (value.isBlank()) return@mapNotNull null
                     val count = req.response.split(value).size - 1
-                    if (count > 0) mapOf("name" to param.name(), "type" to param.type().name, "count" to count.toString())
+                    if (count > 0) ReflectedParamDto(param.name(), param.type().name, count)
                     else null
                 }
                 call.respond(hits)

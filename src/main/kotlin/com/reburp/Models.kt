@@ -147,6 +147,9 @@ data class ParsedResponseDto(
 
 @Serializable data class HeaderDto(val name: String, val value: String)
 @Serializable data class ParamDto(val type: String, val name: String, val value: String)
+
+/** One parameter whose value was found echoed in the response. */
+@Serializable data class ReflectedParamDto(val name: String, val type: String, val count: Int)
 @Serializable data class DiffInput(val request_a: String, val request_b: String)
 @Serializable data class ExtractParamsInput(val request: String)
 @Serializable data class FindReflectedInput(val request: String, val response: String)

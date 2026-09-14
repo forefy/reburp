@@ -13,6 +13,7 @@ Exit status is 1 if any check fails.
 
 import argparse
 import json
+import re
 import sys
 import urllib.error
 import urllib.request
@@ -66,10 +67,30 @@ class Client:
         self.record(name, PASS, self.brief(payload))
         return payload
 
+    # Responses carry real captured traffic: target URLs, hosts and bodies from whatever
+    # engagement this Burp is running. Verbose output goes to a terminal and often into a
+    # shared log, so scrub the identifying parts rather than echoing a client's traffic.
+    _SCRUB = (
+        # host of any absolute URL
+        (re.compile(r'https?://[^"\s/]+'), "https://<host>"),
+        # bare hostname fields, which are not URLs: "host": "...", "http_service_string": "..."
+        (re.compile(r'(?i)("(?:host|http_service_string|domain|client_ip)"\s*:\s*")[^"]+'),
+         r"\1<host>"),
+        # secrets carried as query parameters, e.g. apiKey=..., token=..., sig=...
+        (re.compile(r'(?i)([?&][a-z0-9_-]*(?:key|token|secret|password|sig|auth)[a-z0-9_-]*=)[^&"\s]+'),
+         r"\1<redacted>"),
+        # secrets as JSON fields or header values, e.g. "token": "...", Authorization: ...
+        # value runs to the closing quote so "Bearer <jwt>" is redacted whole, not just "Bearer"
+        (re.compile(r'(?i)((?:api[_-]?key|token|authorization|secret|password|cookie)"?\s*[:=]\s*"?)[^",}]+'),
+         r"\1<redacted>"),
+    )
+
     def brief(self, payload):
         if payload is None:
             return ""
         text = json.dumps(payload)
+        for pattern, replacement in self._SCRUB:
+            text = pattern.sub(replacement, text)
         return text if len(text) <= 110 else text[:107] + "..."
 
     def record(self, name, status, detail):
