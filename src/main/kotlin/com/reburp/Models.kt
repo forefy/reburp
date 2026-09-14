@@ -937,6 +937,17 @@ data class LogEntryDto(
     val ai_notes: String,
     val session_id: String? = null
 )
+/** One page of the activity log, with the total so a caller can tell a page from the whole. */
+@Serializable
+data class LogPage(
+    val total: Int,
+    val returned: Int,
+    val offset: Int,
+    val limit: Int,
+    val newest_first: Boolean,
+    val entries: List<LogEntryDto>
+)
+
 
 @Serializable
 data class SessionRequest(

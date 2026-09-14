@@ -14,13 +14,18 @@ internal fun undocumentedPaths(): String = """
       "get": {
         "tags": ["Activity Log"],
         "summary": "Query the reburp call log",
-        "description": "Returns reburp's own persisted record of REST calls, newest last. This is reburp bookkeeping, not Burp data.",
+        "description": "Returns a page of reburp's own record of REST calls, newest first by default. This is reburp bookkeeping, not Burp data. `total` reports how many entries matched, so a page is distinguishable from the whole log.",
         "operationId": "getActivityLog",
         "parameters": [
-          { "name": "limit",  "in": "query", "schema": { "type": "integer" }, "description": "Maximum entries to return" },
-          { "name": "offset", "in": "query", "schema": { "type": "integer" }, "description": "Entries to skip" }
+          { "name": "limit",  "in": "query", "schema": { "type": "integer", "default": 100, "minimum": 1, "maximum": 500 }, "description": "Entries per page. Values above 500 are clamped to 500; compare `returned` against `total` to see whether more remain." },
+          { "name": "offset", "in": "query", "schema": { "type": "integer", "default": 0 }, "description": "Entries to skip, counted in the requested order" },
+          { "name": "newest_first", "in": "query", "schema": { "type": "boolean", "default": true }, "description": "Newest call first. Set false for chronological order." },
+          { "name": "method", "in": "query", "schema": { "type": "string" }, "description": "Filter by HTTP method" },
+          { "name": "status", "in": "query", "schema": { "type": "integer" }, "description": "Filter by response status" },
+          { "name": "path_contains", "in": "query", "schema": { "type": "string" }, "description": "Substring match on the request path" },
+          { "name": "session_id", "in": "query", "schema": { "type": "string" }, "description": "Restrict to one reburp session" }
         ],
-        "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "type": "array", "items": { "type": "object" } } } } } }
+        "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "${'$'}ref": "#/components/schemas/LogPage" } } } } }
       },
       "delete": {
         "tags": ["Activity Log"],
@@ -154,6 +159,19 @@ internal fun undocumentedPaths(): String = """
 """
 
 internal fun undocumentedSchemas(): String = """
+      "LogPage": {
+        "type": "object",
+        "description": "One page of the activity log",
+        "properties": {
+          "total":        { "type": "integer", "description": "How many entries matched the filters, before paging" },
+          "returned":     { "type": "integer", "description": "How many are in this page" },
+          "offset":       { "type": "integer" },
+          "limit":        { "type": "integer", "description": "The limit actually applied, after clamping" },
+          "newest_first": { "type": "boolean" },
+          "entries":      { "type": "array", "items": { "type": "object" } }
+        }
+      },
+
       "SessionRequest": {
         "type": "object",
         "required": ["label"],

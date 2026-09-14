@@ -371,6 +371,23 @@ def main():
                 verify=lambda p: None if f"({len(listed)} rules)" in (p or {}).get("error", "")
                 else f"wrong count in message: {p}")
 
+    print("\nActivity log")
+    # Paging used to return the oldest calls with limit silently capped and no total, so a
+    # busy log looked frozen and a page was indistinguishable from the whole thing.
+    lg = c.check("log reports a total and pages newest first", "GET", "/api/log?limit=3",
+                 verify=lambda p: None if isinstance(p, dict) and "total" in p
+                 and p.get("newest_first") is True and p.get("returned", 0) <= 3
+                 else f"unexpected shape: {p if not isinstance(p, dict) else sorted(p)}")
+    if isinstance(lg, dict) and len(lg.get("entries", [])) > 1:
+        c.check("newest_first=false reverses the order", "GET",
+                "/api/log?limit=3&newest_first=false",
+                verify=lambda p: None
+                if p["entries"][0]["ts"] <= p["entries"][-1]["ts"]
+                else f"not chronological: {[e['ts'] for e in p['entries']]}")
+    c.check("over-max limit is clamped but total still reported", "GET", "/api/log?limit=99999",
+            verify=lambda p: None if p.get("limit") == 500 and p.get("total", 0) >= p.get("returned", 0)
+            else f"limit={p.get('limit')} total={p.get('total')} returned={p.get('returned')}")
+
     print("\nScope")
     # The spec documents /api/scope/rules; it used to 404 because the handler was only
     # registered at /api/scope.

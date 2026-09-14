@@ -36,13 +36,19 @@ fun Routing.logRoutes(api: MontoyaApi, activityLog: ActivityLogTab) {
         val sessionId      = p["session_id"]
         val limit          = (p["limit"]?.toIntOrNull() ?: 100).coerceIn(1, 500)
         val offset         = (p["offset"]?.toIntOrNull() ?: 0).coerceAtLeast(0)
+        // A log is read from the end. Returning the oldest calls by default made a busy
+        // log look frozen, and with limit silently capped there was no way to tell a page
+        // from the whole thing, so the total is reported alongside.
+        val newestFirst    = p["newest_first"]?.toBooleanStrictOrNull() ?: true
 
-        val entries = activityLog.allEntries()
+        val matched = activityLog.allEntries()
             .let { if (method       != null) it.filter { e -> e.method.uppercase() == method } else it }
             .let { if (status       != null) it.filter { e -> e.status == status } else it }
             .let { if (pathContains != null) it.filter { e -> e.path.contains(pathContains, ignoreCase = true) } else it }
             .let { if (notesContains!= null) it.filter { e -> e.notes.contains(notesContains, ignoreCase = true) } else it }
             .let { if (sessionId    != null) it.filter { e -> e.sessionId == sessionId } else it }
+
+        val entries = (if (newestFirst) matched.asReversed() else matched)
             .drop(offset)
             .take(limit)
             .map { e ->
@@ -58,7 +64,16 @@ fun Routing.logRoutes(api: MontoyaApi, activityLog: ActivityLogTab) {
                 )
             }
 
-        call.respond(entries)
+        call.respond(
+            LogPage(
+                total = matched.size,
+                returned = entries.size,
+                offset = offset,
+                limit = limit,
+                newest_first = newestFirst,
+                entries = entries
+            )
+        )
     }
 
     // ── DELETE /api/log ───────────────────────────────────────────────────────
