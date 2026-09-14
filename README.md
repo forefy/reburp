@@ -69,6 +69,7 @@ grab the matching jar from [Releases](https://github.com/forefy/reburp/releases)
 
 | reburp | Minimum Burp Suite (Montoya) |
 |--------|------------------------------|
+| [1.1.3](https://github.com/forefy/reburp/releases/tag/v1.1.3) | 2026.7 |
 | [1.1.2](https://github.com/forefy/reburp/releases/tag/v1.1.2) | 2026.7 |
 | [1.1.1](https://github.com/forefy/reburp/releases/tag/v1.1.1) | 2026.7 |
 | [1.1.0](https://github.com/forefy/reburp/releases/tag/v1.1.0) | 2026.7 |
