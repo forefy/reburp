@@ -40,7 +40,7 @@ class BurpRestApiExtension : BurpExtension {
             return
         }
 
-        api.logging().logToOutput("reburp listening on http://localhost:$port")
+        api.logging().logToOutput("reburp $REBURP_VERSION listening on http://localhost:$port")
         api.logging().logToOutput("API docs:              http://localhost:$port/docs")
 
         api.extension().registerUnloadingHandler {

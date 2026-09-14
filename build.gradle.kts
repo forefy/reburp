@@ -57,6 +57,31 @@ tasks.jar {
     enabled = false
 }
 
+// The version is reported at startup and over /api/status. Generate it from the Gradle
+// version rather than keeping a copy in the source, so the two cannot drift apart.
+val generateVersionFile by tasks.registering {
+    val outputDir = layout.buildDirectory.dir("generated/version")
+    val versionString = project.version.toString()
+    inputs.property("version", versionString)
+    outputs.dir(outputDir)
+    doLast {
+        val file = outputDir.get().asFile.resolve("com/reburp/Version.kt")
+        file.parentFile.mkdirs()
+        file.writeText(
+            """
+            package com.reburp
+
+            /** Generated from the Gradle version by the generateVersionFile task. Do not edit. */
+            const val REBURP_VERSION: String = "$versionString"
+            """.trimIndent() + "\n"
+        )
+    }
+}
+
+sourceSets.main {
+    kotlin.srcDir(generateVersionFile)
+}
+
 tasks.shadowJar {
     archiveBaseName.set("reburp")
     archiveClassifier.set("")

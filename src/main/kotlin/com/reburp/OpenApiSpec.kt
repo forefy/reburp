@@ -3203,8 +3203,9 @@ ${extraPaths()}
         "type": "object",
         "description": "Extension and Burp version metadata",
         "properties": {
-          "extension":         { "type": "string",  "description": "Extension name" },
-          "version":           { "type": "string",  "description": "Extension version" },
+          "extension":         { "type": "string",  "description": "Extension name, always \"reburp\"" },
+          "extension_version": { "type": "string",  "description": "reburp's own version, e.g. 1.1.2" },
+          "version":           { "type": "string",  "description": "Burp's version string, e.g. \"Burp Suite Professional\". This is Burp's version, not reburp's." },
           "edition":           { "type": "string",  "description": "Burp edition: COMMUNITY, PROFESSIONAL, or ENTERPRISE" },
           "port":              { "type": "integer", "description": "Port this REST server is listening on" },
           "docs_url":          { "type": "string",  "description": "URL to the OpenAPI documentation UI" },

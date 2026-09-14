@@ -80,6 +80,19 @@ class Client:
             print(f"  {status:4}  {name}")
 
 
+def _gradle_version():
+    """The version in build.gradle.kts, which the build bakes into the extension."""
+    import os
+    import re
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    try:
+        text = open(os.path.join(root, "build.gradle.kts")).read()
+    except OSError:
+        return None
+    found = re.search(r'^version\s*=\s*"([^"]+)"', text, re.M)
+    return found.group(1) if found else None
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--port", type=int, default=9090)
@@ -95,6 +108,13 @@ def main():
         return 1
     c.check("openapi spec parses", "GET", "/openapi.json", expect=200,
             verify=lambda p: None if p.get("paths") else "no paths in spec")
+    # The running build reports its own version, which is generated from the Gradle
+    # version. Check it against build.gradle.kts so a stale jar in Burp is visible here
+    # rather than being mistaken for the version that was just built.
+    c.check("reports its own version", "GET", "/api/status",
+            verify=lambda p: None if p.get("extension_version") == _gradle_version()
+            else f"running {p.get('extension_version')}, but the source tree is "
+                 f"{_gradle_version()}: Burp is holding an older jar")
 
     print("\nNumbers")
     c.check("hex to decimal", "POST", "/api/utils/number/convert",

@@ -15,6 +15,8 @@ import kotlinx.serialization.json.JsonObject
 @Serializable
 data class StatusResponse(
     val extension: String,
+    /** reburp's own version. The `version` field below is Burp's. */
+    val extension_version: String,
     val version: String,
     val edition: String,
     val port: Int,
