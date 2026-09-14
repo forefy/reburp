@@ -80,6 +80,32 @@ class Client:
             print(f"  {status:4}  {name}")
 
 
+# ── Shared verifiers ─────────────────────────────────────────────────────────
+
+def rank_is_usable(payload):
+    """Ranking must come back ordered and joinable, not merely well-formed.
+
+    Guards two regressions this endpoint actually shipped with: results arriving
+    in capture order rather than by descending rank, and entries carrying no id
+    to join against proxy history. Both returned a schema-valid 200, so only an
+    assertion on meaning catches them.
+    """
+    entries = payload.get("ranked", [])
+    if not entries:
+        return None  # nothing proxied yet is not a failure
+    ranks = [e.get("rank") for e in entries]
+    if any(r is None for r in ranks):
+        return "entries are missing the 'rank' field"
+    if ranks != sorted(ranks, reverse=True):
+        return f"not ordered by descending rank: first five are {ranks[:5]}"
+    unresolved = [e for e in entries if e.get("id", -1) < 0]
+    if unresolved:
+        return f"{len(unresolved)}/{len(entries)} entries have no proxy-history id"
+    if payload.get("truncated") and payload.get("considered", 0) == 0:
+        return "truncated set but nothing considered"
+    return None
+
+
 def _gradle_version():
     """The version in build.gradle.kts, which the build bakes into the extension."""
     import os
@@ -156,7 +182,8 @@ def main():
     c.check("convert", "POST", "/api/utils/bytes/convert", {"data": "hello"})
 
     print("\nRanking")
-    c.check("rank history", "POST", "/api/utils/rank", {"limit": 25})
+    c.check("rank history", "POST", "/api/utils/rank", {"limit": 25, "scope_only": False},
+            verify=rank_is_usable)
 
     print("\nShell (expected off)")
     c.check("shell status", "GET", "/api/utils/shell/status",
