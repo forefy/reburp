@@ -23,7 +23,8 @@ internal fun undocumentedPaths(): String = """
           { "name": "method", "in": "query", "schema": { "type": "string" }, "description": "Filter by HTTP method" },
           { "name": "status", "in": "query", "schema": { "type": "integer" }, "description": "Filter by response status" },
           { "name": "path_contains", "in": "query", "schema": { "type": "string" }, "description": "Substring match on the request path" },
-          { "name": "session_id", "in": "query", "schema": { "type": "string" }, "description": "Restrict to one reburp session" }
+          { "name": "session_id", "in": "query", "schema": { "type": "string" }, "description": "Restrict to one reburp session" },
+          {"name": "ai_notes_contains", "in": "query", "schema": {"type": "string"}, "description": "Case-insensitive substring of the AI notes recorded on a call"}
         ],
         "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "${'$'}ref": "#/components/schemas/LogPage" } } } } }
       },

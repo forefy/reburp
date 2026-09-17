@@ -407,6 +407,26 @@ def main():
             expect=400, tolerate=(403, 404),
             verify=lambda p: None if "PASIVE" in (p or {}).get("error", "") else f"typo was not refused: {p}")
 
+    print("\nQuery parameters are honoured")
+    # A documented parameter the handler never reads answers 200 with unfiltered data, which a
+    # caller cannot tell from a real answer. ?path on the config export was ignored this way.
+    full = c.call("GET", "/api/config/project")[1] or {}
+    c.check("config ?path exports only that sub-tree", "GET",
+            "/api/config/project?path=project_options.connections",
+            verify=lambda p: None if len(p.get("result", "")) < len(full.get("result", "")) / 2
+            and "connections" in p.get("result", "") else "path was ignored: got the whole config")
+    c.check("history ?method filters", "GET", "/api/proxy/history?limit=50&method=POST",
+            verify=lambda p: None if all(e.get("method") == "POST" for e in p)
+            else "non-POST entries returned")
+    c.check("history ?status_min/status_max filter", "GET",
+            "/api/proxy/history?limit=50&status_min=200&status_max=299",
+            verify=lambda p: None if all(e.get("status") and 200 <= e["status"] <= 299 for e in p)
+            else "entries outside 2xx returned")
+    c.check("scanner issues ?severity filters", "GET", "/api/scanner/issues?limit=100&severity=LOW",
+            tolerate=(403,), verify=lambda p: None
+            if all(i.get("severity") == "LOW" for i in (p if isinstance(p, list) else p.get("issues", [])))
+            else "issues of other severities returned")
+
     print("\nActivity log")
     # Paging used to return the oldest calls with limit silently capped and no total, so a
     # busy log looked frozen and a page was indistinguishable from the whole thing.

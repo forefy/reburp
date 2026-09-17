@@ -18,9 +18,10 @@ fun Routing.configRoutes(api: MontoyaApi) {
         // ── Project options ───────────────────────────────────────────────────
 
         get("/project") {
-            val section = call.request.queryParameters["section"]
+            val paths = configPaths(call.request.queryParameters)
+            val section = paths.joinToString(", ")
             runCatching {
-                val json = if (section != null) api.burpSuite().exportProjectOptionsAsJson(section)
+                val json = if (paths.isNotEmpty()) api.burpSuite().exportProjectOptionsAsJson(*paths.toTypedArray())
                            else api.burpSuite().exportProjectOptionsAsJson()
                 call.respond(StringResult(json))
             }.onFailure { call.respond(HttpStatusCode.BadRequest, ErrorResponse("Unknown or invalid section '${section}': ${it.message}")) }
@@ -39,9 +40,10 @@ fun Routing.configRoutes(api: MontoyaApi) {
         // ── User options ──────────────────────────────────────────────────────
 
         get("/user") {
-            val section = call.request.queryParameters["section"]
+            val paths = configPaths(call.request.queryParameters)
+            val section = paths.joinToString(", ")
             runCatching {
-                val json = if (section != null) api.burpSuite().exportUserOptionsAsJson(section)
+                val json = if (paths.isNotEmpty()) api.burpSuite().exportUserOptionsAsJson(*paths.toTypedArray())
                            else api.burpSuite().exportUserOptionsAsJson()
                 call.respond(StringResult(json))
             }.onFailure { call.respond(HttpStatusCode.BadRequest, ErrorResponse("Unknown or invalid section '${section}': ${it.message}")) }
@@ -106,3 +108,13 @@ fun Routing.configRoutes(api: MontoyaApi) {
         }.onFailure { call.respond(HttpStatusCode.InternalServerError, ErrorResponse(it.message ?: "Error")) }
     }
 }
+
+// The spec documented both ?path (a dotted sub-tree) and ?section, but only section was read,
+// so ?path=project_options.connections silently returned the whole config. They are the same
+// thing to Montoya, whose export takes any number of dotted paths, so accept either name and
+// repeat either to export several sub-trees.
+private fun configPaths(query: io.ktor.http.Parameters): List<String> =
+    (query.getAll("path").orEmpty() + query.getAll("section").orEmpty())
+        .flatMap { it.split(',') }
+        .map { it.trim() }
+        .filter { it.isNotEmpty() }

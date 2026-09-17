@@ -69,7 +69,16 @@ fun openApiJson(port: Int): String = """
         "parameters": [
           { "name": "offset",       "in": "query", "schema": { "type": "integer", "default": 0 },   "description": "Pagination offset (0-based)" },
           { "name": "limit",        "in": "query", "schema": { "type": "integer", "default": 100 }, "description": "Maximum number of items to return" },
-          { "name": "include_body", "in": "query", "schema": { "type": "boolean", "default": false }, "description": "Include raw request/response text" }
+          { "name": "include_body", "in": "query", "schema": { "type": "boolean", "default": false }, "description": "Include raw request/response text" },
+          {"name": "host", "in": "query", "schema": {"type": "string"}, "description": "Exact hostname, case-insensitive"},
+          {"name": "method", "in": "query", "schema": {"type": "string"}, "description": "HTTP method, e.g. GET or POST"},
+          {"name": "mime_type", "in": "query", "schema": {"type": "string"}, "description": "Burp MIME type name, e.g. HTML, JSON, SCRIPT, IMAGE_JPEG"},
+          {"name": "status_min", "in": "query", "schema": {"type": "integer"}, "description": "Lowest response status to include, inclusive"},
+          {"name": "status_max", "in": "query", "schema": {"type": "integer"}, "description": "Highest response status to include, inclusive"},
+          {"name": "edited_only", "in": "query", "schema": {"type": "boolean", "default": false}, "description": "Only exchanges modified by match-and-replace rules"},
+          {"name": "has_response", "in": "query", "schema": {"type": "boolean"}, "description": "true: only exchanges that received a response; false: only those that did not"},
+          {"name": "scope_only", "in": "query", "schema": {"type": "boolean", "default": false}, "description": "Only in-scope exchanges"},
+          {"name": "listener_port", "in": "query", "schema": {"type": "integer"}, "description": "Only exchanges that came through this proxy listener port"}
         ],
         "responses": {
           "200": {
@@ -176,7 +185,9 @@ fun openApiJson(port: Int): String = """
           { "name": "regex",      "in": "query", "required": true, "schema": { "type": "string" }, "description": "Java-compatible regular expression" },
           { "name": "scope_only", "in": "query", "schema": { "type": "boolean", "default": false }, "description": "Restrict to in-scope requests only" },
           { "name": "offset",     "in": "query", "schema": { "type": "integer", "default": 0 } },
-          { "name": "limit",      "in": "query", "schema": { "type": "integer", "default": 100 } }
+          { "name": "limit",      "in": "query", "schema": { "type": "integer", "default": 100 } },
+          {"name": "max_snippets", "in": "query", "schema": {"type": "integer", "default": 3, "minimum": 1, "maximum": 10}, "description": "Context snippets returned per matching response"},
+          {"name": "context_chars", "in": "query", "schema": {"type": "integer", "default": 60, "minimum": 10, "maximum": 200}, "description": "Characters of context either side of each match"}
         ],
         "responses": {
           "200": {
@@ -1148,7 +1159,14 @@ fun openApiJson(port: Int): String = """
         "x-api-source": "montoya",
         "parameters": [
           { "name": "offset", "in": "query", "schema": { "type": "integer", "default": 0 } },
-          { "name": "limit",  "in": "query", "schema": { "type": "integer", "default": 100 } }
+          { "name": "limit",  "in": "query", "schema": { "type": "integer", "default": 100 } },
+          {"name": "severity", "in": "query", "schema": {"type": "string", "enum": ["HIGH", "MEDIUM", "LOW", "INFORMATION", "FALSE_POSITIVE"]}, "description": "Only this severity"},
+          {"name": "confidence", "in": "query", "schema": {"type": "string", "enum": ["CERTAIN", "FIRM", "TENTATIVE"]}, "description": "Only this confidence"},
+          {"name": "host", "in": "query", "schema": {"type": "string"}, "description": "Exact hostname"},
+          {"name": "name_contains", "in": "query", "schema": {"type": "string"}, "description": "Case-insensitive substring of the issue name"},
+          {"name": "prefix", "in": "query", "schema": {"type": "string"}, "description": "URL prefix, e.g. https://example.com/api. Filtered by Burp's site map rather than after the fact"},
+          {"name": "include_requests", "in": "query", "schema": {"type": "boolean", "default": false}, "description": "Include the request/response pairs that evidence each issue"},
+          {"name": "include_request_body", "in": "query", "schema": {"type": "boolean", "default": false}, "description": "Include their body text as well. Needs include_requests=true"}
         ],
         "responses": {
           "200": {
@@ -1503,7 +1521,7 @@ fun openApiJson(port: Int): String = """
         "operationId": "getProjectConfig",
         "x-api-source": "montoya-config",
         "parameters": [
-          { "name": "path", "in": "query", "schema": { "type": "string" }, "description": "Dot-notation path to a config sub-tree, e.g. project_options.connections" },
+          { "name": "path", "in": "query", "schema": { "type": "string" }, "description": "Dot-notation path to a config sub-tree, e.g. project_options.connections. Repeat it or comma-separate to export several. Same as section." },
           { "name": "section", "in": "query", "schema": { "type": "string" }, "description": "Optional config section name to export (e.g. proxy, scanner). Omit to export all." }
         ],
         "responses": {
@@ -1553,7 +1571,7 @@ fun openApiJson(port: Int): String = """
         "operationId": "getUserConfig",
         "x-api-source": "montoya-config",
         "parameters": [
-          { "name": "path", "in": "query", "schema": { "type": "string" }, "description": "Dot-notation path to a sub-tree" },
+          { "name": "path", "in": "query", "schema": { "type": "string" }, "description": "Dot-notation path to a sub-tree, e.g. user_options.extender. Repeat it or comma-separate to export several. Same as section." },
           { "name": "section", "in": "query", "schema": { "type": "string" }, "description": "Optional config section name to export (e.g. proxy, scanner). Omit to export all." }
         ],
         "responses": {
@@ -2522,7 +2540,8 @@ fun openApiJson(port: Int): String = """
         "operationId": "getWebSocketMessages",
         "x-api-source": "montoya",
         "parameters": [
-          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } },
+          {"name": "clear", "in": "query", "schema": {"type": "boolean", "default": false}, "description": "Empty the message buffer after returning it, so the next read only sees newer messages"}
         ],
         "responses": {
           "200": { "description": "OK", "content": { "application/json": { "schema": { "type": "array", "items": { "${'$'}ref": "#/components/schemas/WsClientMessageDto" } } } } },
