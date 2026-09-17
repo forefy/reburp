@@ -412,6 +412,16 @@ def main():
             expect=400, tolerate=(403,),
             verify=lambda p: None if "host" in (p or {}).get("error", "") else f"not refused: {p}")
 
+    print("\nRepeater and Intruder")
+    # Both only populate a Burp tab, so no request leaves the machine. sendToIntruder rejects a
+    # service-less request ("HttpRequest must have an HttpService") where sendToRepeater tolerates
+    # it, so intruder/send used to 500 on the same body repeater/send accepted.
+    example_req = "GET / HTTP/1.1\r\nHost: example.com\r\n\r\n"
+    c.check("send to Repeater", "POST", "/api/repeater/send",
+            {"raw_request": example_req, "tab_name": "reburp smoke test"}, verify=wrote_something)
+    c.check("send to Intruder", "POST", "/api/intruder/send",
+            {"raw_request": example_req, "tab_name": "reburp smoke test"}, verify=wrote_something)
+
     print("\nQuery parameters are honoured")
     # A documented parameter the handler never reads answers 200 with unfiltered data, which a
     # caller cannot tell from a real answer. ?path on the config export was ignored this way.

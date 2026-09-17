@@ -382,7 +382,10 @@ fun Routing.httpRoutes(api: MontoyaApi, activityLog: ActivityLogTab? = null) {
             }.getOrNull()
         }
 
-        fun sendTarget(extraHeader: String?): burp.api.montoya.http.message.responses.HttpResponse? {
+        // Returns the request/response pair so the caller can echo exactly what Burp sent, including
+        // the injected auth header on a retry. Returning only the response left the reported request
+        // empty whenever the structured form was used, since req.request.request is null then.
+        fun sendTarget(extraHeader: String?): burp.api.montoya.http.message.HttpRequestResponse? {
             val rawReq = when {
                 req.request.request != null -> normalizeRequest(req.request.request)
                 req.request.method != null && req.request.path != null ->
@@ -397,17 +400,17 @@ fun Routing.httpRoutes(api: MontoyaApi, activityLog: ActivityLogTab? = null) {
             } else {
                 HttpRequest.httpRequest(httpService(req.request.host, req.request.port, req.request.use_https), rawReq)
             }
-            return api.http().sendRequest(augmented).response()
+            return api.http().sendRequest(augmented)
         }
 
         runCatching {
-            val firstResp = sendTarget(null)
-            val firstStatus = firstResp?.statusCode()?.toInt() ?: 0
+            val first = sendTarget(null)
+            val firstStatus = first?.response()?.statusCode()?.toInt() ?: 0
 
             if (firstStatus !in req.retry_on) {
                 call.respond(HttpSendResponse(
-                    request  = req.request.request ?: "",
-                    response = firstResp?.toString()
+                    request  = first?.request()?.toString() ?: "",
+                    response = first?.response()?.toString()
                 ))
                 return@post
             }
@@ -420,10 +423,10 @@ fun Routing.httpRoutes(api: MontoyaApi, activityLog: ActivityLogTab? = null) {
                 ?: return@post call.respond(HttpStatusCode.BadRequest, ErrorResponse("Could not extract token from auth response using path '${req.auth.token_path}'. Auth response: ${authBody.take(200)}"))
 
             val headerLine = req.inject_as.replace("{token}", token)
-            val retryResp = sendTarget(headerLine)
+            val retry = sendTarget(headerLine)
             call.respond(HttpSendResponse(
-                request  = req.request.request ?: headerLine,
-                response = retryResp?.toString()
+                request  = retry?.request()?.toString() ?: "",
+                response = retry?.response()?.toString()
             ))
         }.onFailure { if (!call.response.isCommitted) call.respond(HttpStatusCode.InternalServerError, ErrorResponse(it.message ?: "Error")) }
     }

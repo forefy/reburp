@@ -54,7 +54,8 @@ fun Routing.repeaterIntruderRoutes(api: MontoyaApi) {
             return@post call.respond(HttpStatusCode.BadRequest, ErrorResponse(it.message ?: "Invalid request body"))
         }
         val httpReq = runCatching {
-            HttpRequest.httpRequest(normalizeRequest(req.raw_request))
+            val norm = normalizeRequest(req.raw_request)
+            HttpRequest.httpRequest(serviceFromRawRequest(norm), norm)
         }.getOrElse {
             return@post call.respond(
                 HttpStatusCode.BadRequest,
@@ -119,7 +120,8 @@ fun Routing.repeaterIntruderRoutes(api: MontoyaApi) {
             return@post call.respond(HttpStatusCode.BadRequest, ErrorResponse(it.message ?: "Invalid request body"))
         }
         val httpReq = runCatching {
-            HttpRequest.httpRequest(normalizeRequest(req.raw_request))
+            val norm = normalizeRequest(req.raw_request)
+            HttpRequest.httpRequest(serviceFromRawRequest(norm), norm)
         }.getOrElse {
             return@post call.respond(
                 HttpStatusCode.BadRequest,

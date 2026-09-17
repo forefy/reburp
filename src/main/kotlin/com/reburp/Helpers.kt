@@ -98,6 +98,23 @@ fun httpService(host: String, port: Int, useHttps: Boolean): HttpService =
  * Normalizes HTTP request line endings to CRLF and fixes Content-Length when the
  * body byte count changes due to line-ending normalization.
  */
+// Intruder (unlike Repeater) rejects a request with no HttpService: "HttpRequest must have an
+// HttpService". A raw request only names its target in the Host header, so derive the service
+// from it. TLS cannot be read from a raw request, so assume https unless the Host names port 80.
+fun serviceFromRawRequest(raw: String): HttpService {
+    val hostValue = raw.replace("\r\n", "\n").lineSequence()
+        .map { it.trim() }
+        .firstOrNull { it.startsWith("Host:", ignoreCase = true) }
+        ?.substringAfter(':')?.trim()
+        ?.takeIf { it.isNotEmpty() }
+        ?: throw IllegalArgumentException("raw_request has no Host header, so its target is unknown")
+    val hasPort = hostValue.contains(':')
+    val host = if (hasPort) hostValue.substringBeforeLast(':') else hostValue
+    val port = if (hasPort) hostValue.substringAfterLast(':').toIntOrNull() else null
+    val https = port != 80
+    return HttpService.httpService(host, port ?: if (https) 443 else 80, https)
+}
+
 fun normalizeRequest(raw: String): String {
     val normalized = raw.replace("\r\n", "\n").replace("\r", "\n").replace("\n", "\r\n")
     val sep = normalized.indexOf("\r\n\r\n")
