@@ -782,7 +782,8 @@ fun openApiJson(port: Int): String = """
           "required": true,
           "content": {
             "application/json": {
-              "schema": { "${'$'}ref": "#/components/schemas/DiffInput" }
+              "schema": { "${'$'}ref": "#/components/schemas/DiffInput" },
+              "example": {"request_a": "GET /search?q=apple&page=1 HTTP/1.1\r\nHost: example.com\r\nCookie: session=abc\r\n\r\n", "request_b": "GET /search?q=banana&page=1 HTTP/1.1\r\nHost: example.com\r\nCookie: session=abc\r\n\r\n"}
             }
           }
         },
@@ -811,7 +812,8 @@ fun openApiJson(port: Int): String = """
           "required": true,
           "content": {
             "application/json": {
-              "schema": { "${'$'}ref": "#/components/schemas/ExtractParamsInput" }
+              "schema": { "${'$'}ref": "#/components/schemas/ExtractParamsInput" },
+              "example": {"request": "GET /search?q=apple&page=1 HTTP/1.1\r\nHost: example.com\r\nCookie: session=abc\r\n\r\n"}
             }
           }
         },
@@ -840,7 +842,8 @@ fun openApiJson(port: Int): String = """
           "required": true,
           "content": {
             "application/json": {
-              "schema": { "${'$'}ref": "#/components/schemas/FindReflectedInput" }
+              "schema": { "${'$'}ref": "#/components/schemas/FindReflectedInput" },
+              "example": {"request": "GET /search?q=apple&page=1 HTTP/1.1\r\nHost: example.com\r\nCookie: session=abc\r\n\r\n", "response": "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n<h1>Results for apple</h1><p>3 found</p>"}
             }
           }
         },
@@ -882,7 +885,7 @@ fun openApiJson(port: Int): String = """
               "schema": { "${'$'}ref": "#/components/schemas/InsertionPointsInput" },
               "example": {
                 "request": "POST /login HTTP/1.1\r\nHost: example.com\r\nContent-Type: application/x-www-form-urlencoded\r\n\r\nuser=admin&pass=secret",
-                "mode": "ALL_PARAMETERS"
+                "mode": "REPLACE_BASE_PARAMETER_VALUE_WITH_OFFSETS"
               }
             }
           }
@@ -1165,7 +1168,7 @@ fun openApiJson(port: Int): String = """
       "post": {
         "tags": ["Scanner"],
         "summary": "Start audit with built-in configuration (Pro only)",
-        "description": "**[Montoya API]** Starts a Burp audit using one of the built-in scan configurations. Requires Burp Suite Professional.\n\nAvailable configuration values: CRAWL_AND_AUDIT_EVERYTHING_FAST, CRAWL_AND_AUDIT_EVERYTHING_THOROUGH, CRAWL_EVERYTHING_FAST, CRAWL_EVERYTHING_THOROUGH, AUDIT_COVERAGE_SPEED, AUDIT_COVERAGE_THOROUGH, AUDIT_ACCURACY_SPEED, AUDIT_ACCURACY_THOROUGH.",
+        "description": "**[Montoya API]** Starts a Burp audit using one of Montoya's built-in audit configurations. Requires Burp Suite Professional.\n\n`configuration` is ACTIVE or PASSIVE (or the full LEGACY_ACTIVE_AUDIT_CHECKS / LEGACY_PASSIVE_AUDIT_CHECKS). Those are the only built-in configurations Montoya exposes; named scan configurations from Burp's UI cannot be selected through the extension API. An unrecognised value is rejected rather than defaulting to an active audit.",
         "operationId": "startAudit",
         "x-api-source": "montoya",
         "requestBody": {
@@ -1174,7 +1177,7 @@ fun openApiJson(port: Int): String = """
             "application/json": {
               "schema": { "${'$'}ref": "#/components/schemas/StartAuditRequest" },
               "example": {
-                "configuration": "CRAWL_AND_AUDIT_EVERYTHING_FAST",
+                "configuration": "PASSIVE",
                 "host": "example.com",
                 "port": 443,
                 "use_https": true,
@@ -2181,7 +2184,8 @@ fun openApiJson(port: Int): String = """
           "required": true,
           "content": {
             "application/json": {
-              "schema": { "${'$'}ref": "#/components/schemas/ResponseKeywordsInput" }
+              "schema": { "${'$'}ref": "#/components/schemas/ResponseKeywordsInput" },
+              "example": {"responses": ["HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n<h1>Results for apple</h1><p>3 found</p>", "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n<h1>Results for banana</h1><p>0 found</p>"], "keywords": ["found", "Results"]}
             }
           }
         },
@@ -2210,7 +2214,8 @@ fun openApiJson(port: Int): String = """
           "required": true,
           "content": {
             "application/json": {
-              "schema": { "${'$'}ref": "#/components/schemas/ResponseVariationsInput" }
+              "schema": { "${'$'}ref": "#/components/schemas/ResponseVariationsInput" },
+              "example": {"responses": ["HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n<h1>Results for apple</h1><p>3 found</p>", "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n<h1>Results for banana</h1><p>0 found</p>"]}
             }
           }
         },
@@ -3536,7 +3541,7 @@ ${extraPaths()}
         "required": ["request"],
         "properties": {
           "request": { "type": "string", "description": "Raw HTTP request string" },
-          "mode":    { "type": "string", "default": "ALL_PARAMETERS", "description": "Insertion point mode: ALL_PARAMETERS returns all identified injection points" }
+          "mode":    { "type": "string", "enum": ["REPLACE_BASE_PARAMETER_VALUE_WITH_OFFSETS", "APPEND_OFFSETS_TO_BASE_PARAMETER_VALUE"], "default": "REPLACE_BASE_PARAMETER_VALUE_WITH_OFFSETS", "description": "How Burp marks each insertion point: replace the base parameter value with the offsets, or append offsets after it" }
         }
       },
 
@@ -3608,18 +3613,9 @@ ${extraPaths()}
         "properties": {
           "configuration": {
             "type": "string",
-            "default": "CRAWL_AND_AUDIT_EVERYTHING_FAST",
-            "enum": [
-              "CRAWL_AND_AUDIT_EVERYTHING_FAST",
-              "CRAWL_AND_AUDIT_EVERYTHING_THOROUGH",
-              "CRAWL_EVERYTHING_FAST",
-              "CRAWL_EVERYTHING_THOROUGH",
-              "AUDIT_COVERAGE_SPEED",
-              "AUDIT_COVERAGE_THOROUGH",
-              "AUDIT_ACCURACY_SPEED",
-              "AUDIT_ACCURACY_THOROUGH"
-            ],
-            "description": "Built-in Burp scan configuration name"
+            "default": "ACTIVE",
+            "enum": ["ACTIVE", "PASSIVE", "LEGACY_ACTIVE_AUDIT_CHECKS", "LEGACY_PASSIVE_AUDIT_CHECKS"],
+            "description": "ACTIVE or PASSIVE, or the Montoya BuiltInAuditConfiguration name they stand for. Case-insensitive; anything else is rejected."
           },
           "host":      { "type": "string",  "nullable": true },
           "port":      { "type": "integer", "default": 443 },
@@ -3633,7 +3629,7 @@ ${extraPaths()}
         "description": "Start a Burp audit using ACTIVE or PASSIVE mode",
         "required": ["requests"],
         "properties": {
-          "mode":      { "type": "string",  "default": "ACTIVE", "enum": ["ACTIVE", "PASSIVE"], "description": "Audit mode" },
+          "mode":      { "type": "string",  "default": "ACTIVE", "enum": ["ACTIVE", "PASSIVE", "LEGACY_ACTIVE_AUDIT_CHECKS", "LEGACY_PASSIVE_AUDIT_CHECKS"], "description": "Audit mode. Case-insensitive; an unrecognised value is rejected." },
           "host":      { "type": "string",  "nullable": true },
           "port":      { "type": "integer", "default": 443 },
           "use_https": { "type": "boolean", "default": true },
@@ -4342,7 +4338,7 @@ ${extraPaths()}
         "required": ["index"],
         "properties": {
           "index":         { "type": "integer", "description": "Zero-based index into proxy history" },
-          "configuration": { "type": "string", "default": "ACTIVE", "enum": ["ACTIVE", "PASSIVE", "LEGACY_ACTIVE", "LEGACY_PASSIVE"], "description": "Audit configuration preset" }
+          "configuration": { "type": "string", "default": "ACTIVE", "enum": ["ACTIVE", "PASSIVE", "LEGACY_ACTIVE", "LEGACY_PASSIVE", "LEGACY_ACTIVE_AUDIT_CHECKS", "LEGACY_PASSIVE_AUDIT_CHECKS"], "description": "Audit configuration. Case-insensitive; an unrecognised value is rejected rather than starting an active audit." }
         }
       },
 

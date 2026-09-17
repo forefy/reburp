@@ -13,6 +13,7 @@ import io.ktor.http.*
 import io.ktor.server.request.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
+import kotlinx.serialization.json.*
 
 fun Routing.utilityRoutes(api: MontoyaApi) {
     route("/api/utils") {
@@ -156,7 +157,23 @@ fun Routing.utilityRoutes(api: MontoyaApi) {
             val req = runCatching { call.receive<StringInput>() }.getOrElse {
                 return@post call.respond(HttpStatusCode.BadRequest, ErrorResponse(it.message ?: "Bad request body"))
             }
-            call.respond(StringResult(decodeJwt(req.value)))
+            // The spec promises header and payload as objects and the signature as a string.
+            // This used to return all three flattened into one "header=...\npayload=..." string,
+            // which a caller could not read claims out of without re-parsing it.
+            val parts = req.value.trim().split(".")
+            if (parts.size < 2)
+                return@post call.respond(HttpStatusCode.BadRequest,
+                    ErrorResponse("Not a JWT: expected header.payload.signature"))
+            val decoder = java.util.Base64.getUrlDecoder()
+            fun segment(i: Int): JsonObject? = runCatching {
+                Json.parseToJsonElement(String(decoder.decode(parts[i].trimEnd('=')), Charsets.UTF_8)).jsonObject
+            }.getOrNull()
+            val header = segment(0)
+            val payload = segment(1)
+            if (header == null || payload == null)
+                return@post call.respond(HttpStatusCode.BadRequest,
+                    ErrorResponse("Not a JWT: the ${if (header == null) "header" else "payload"} is not base64url-encoded JSON"))
+            call.respond(JwtParts(header = header, payload = payload, signature = parts.getOrElse(2) { "" }))
         }
 
         get("/random") {

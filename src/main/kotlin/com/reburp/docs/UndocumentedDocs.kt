@@ -75,7 +75,7 @@ internal fun undocumentedPaths(): String = """
       "post": {
         "tags": ["Bambda"],
         "summary": "Import a Bambda script",
-        "operationId": "importBambda",
+        "operationId": "importBambdaScript",
         "requestBody": {
           "required": true,
           "content": { "application/json": { "schema": { "${'$'}ref": "#/components/schemas/BambdaImportRequest" } } }
@@ -106,10 +106,10 @@ internal fun undocumentedPaths(): String = """
         "tags": ["HTTP"],
         "summary": "Decode a JWT",
         "description": "Splits a JWT into header and payload without verifying its signature, and reports weaknesses such as alg none.",
-        "operationId": "decodeJwt",
+        "operationId": "analyzeJwt",
         "requestBody": {
           "required": true,
-          "content": { "application/json": { "schema": { "type": "object", "required": ["token"], "properties": { "token": { "type": "string" } } } } }
+          "content": { "application/json": { "schema": { "type": "object", "required": ["token"], "properties": { "token": { "type": "string" } } }, "example": {"token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U"} } }
         },
         "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "type": "object", "properties": { "header": { "type": "object" }, "payload": { "type": "object" }, "issues": { "type": "array", "items": { "type": "string" } } } } } } } }
       }

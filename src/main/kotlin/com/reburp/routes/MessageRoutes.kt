@@ -160,14 +160,17 @@ data class MsgRequestHeadersInput(
     val apply_default_headers: Boolean = false
 )
 
+// headers, applied and not_found carry no default on purpose: Json leaves out any field
+// still equal to its default, so an empty list vanished from the response instead of
+// arriving as [], and a caller reading not_found after a clean edit got no key at all.
 @Serializable
 data class MsgRequestEditResult(
     val request: String,
     val http_version: String? = null,
     val body_offset: Int,
-    val headers: List<MsgHeader> = emptyList(),
-    val applied: List<String> = emptyList(),
-    val not_found: List<String> = emptyList()
+    val headers: List<MsgHeader>,
+    val applied: List<String>,
+    val not_found: List<String>
 )
 
 @Serializable
@@ -228,9 +231,9 @@ data class MsgResponseEditResult(
     val reason_phrase: String? = null,
     val http_version: String? = null,
     val body_offset: Int,
-    val headers: List<MsgHeader> = emptyList(),
-    val applied: List<String> = emptyList(),
-    val not_found: List<String> = emptyList()
+    val headers: List<MsgHeader>,
+    val applied: List<String>,
+    val not_found: List<String>
 )
 
 // ── Markers and annotations ───────────────────────────────────────────────────

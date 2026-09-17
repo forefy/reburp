@@ -10,6 +10,9 @@ import kotlinx.serialization.json.JsonObject
 @Serializable data class MessageResponse(val message: String)
 @Serializable data class StringResult(val result: String)
 
+/** A JWT split into its decoded parts. The signature is left encoded: decoding it yields raw bytes. */
+@Serializable data class JwtParts(val header: JsonObject, val payload: JsonObject, val signature: String)
+
 // ── Status ────────────────────────────────────────────────────────────────────
 
 @Serializable
@@ -157,7 +160,12 @@ data class ParsedResponseDto(
 @Serializable
 data class InsertionPointsInput(
     val request: String,
-    val mode: String = "ALL_PARAMETERS"
+    /**
+     * A Montoya HttpRequestTemplateGenerationOptions name:
+     * REPLACE_BASE_PARAMETER_VALUE_WITH_OFFSETS | APPEND_OFFSETS_TO_BASE_PARAMETER_VALUE.
+     * The default used to be ALL_PARAMETERS, which is not one of them, so omitting mode always failed.
+     */
+    val mode: String = "REPLACE_BASE_PARAMETER_VALUE_WITH_OFFSETS"
 )
 
 @Serializable data class InsertionPointDto(val start: Int, val end: Int)
@@ -177,7 +185,7 @@ data class CookieDto(
 
 @Serializable
 data class StartAuditRequest(
-    val configuration: String = "CRAWL_AND_AUDIT_EVERYTHING_FAST",
+    val configuration: String = "ACTIVE",
     val host: String? = null,
     val port: Int = 443,
     val use_https: Boolean = true,
@@ -764,7 +772,7 @@ data class PayloadsResponse(
 @Serializable
 data class AuditFromHistoryRequest(
     val index: Int,
-    val configuration: String = "ACTIVE"  // "ACTIVE", "PASSIVE", "LEGACY_ACTIVE", "LEGACY_PASSIVE"
+    val configuration: String = "ACTIVE"  // ACTIVE | PASSIVE, or a BuiltInAuditConfiguration name
 )
 
 // ── Scanner: report download (base64) ─────────────────────────────────────────

@@ -102,10 +102,9 @@ fun Routing.scannerRoutes(api: MontoyaApi) {
                 return@post call.respond(HttpStatusCode.BadRequest, ErrorResponse(it.message ?: "Bad request body"))
             }
             runCatching {
-                val cfg = AuditConfiguration.auditConfiguration(
-                    BuiltInAuditConfiguration.valueOf(req.configuration)
-                )
-                val audit = api.scanner().startAudit(cfg)
+                val builtIn = builtInAuditConfiguration(req.configuration)
+                    ?: return@post call.respond(HttpStatusCode.BadRequest, invalidAuditConfiguration("configuration", req.configuration))
+                val audit = api.scanner().startAudit(AuditConfiguration.auditConfiguration(builtIn))
                 if (req.requests.isNotEmpty() && req.host != null) {
                     val service = httpService(req.host, req.port, req.use_https)
                     for (raw in req.requests) {
@@ -125,11 +124,8 @@ fun Routing.scannerRoutes(api: MontoyaApi) {
                 return@post call.respond(HttpStatusCode.BadRequest, ErrorResponse(it.message ?: "Bad request body"))
             }
             runCatching {
-                val builtIn = when (req.mode.trim().uppercase()) {
-                    "ACTIVE" -> BuiltInAuditConfiguration.LEGACY_ACTIVE_AUDIT_CHECKS
-                    "PASSIVE" -> BuiltInAuditConfiguration.LEGACY_PASSIVE_AUDIT_CHECKS
-                    else -> BuiltInAuditConfiguration.valueOf(req.mode.trim().uppercase())
-                }
+                val builtIn = builtInAuditConfiguration(req.mode)
+                    ?: return@post call.respond(HttpStatusCode.BadRequest, invalidAuditConfiguration("mode", req.mode))
                 val audit = api.scanner().startAudit(AuditConfiguration.auditConfiguration(builtIn))
                 if (req.requests.isNotEmpty() && req.host != null) {
                     val service = httpService(req.host, req.port, req.use_https)
@@ -155,12 +151,8 @@ fun Routing.scannerRoutes(api: MontoyaApi) {
                 return@post call.respond(HttpStatusCode.NotFound, ErrorResponse("Index ${req.index} out of range (history size: ${history.size})"))
             runCatching {
                 val item = history[req.index]
-                val builtIn = when (req.configuration.uppercase()) {
-                    "ACTIVE"         -> BuiltInAuditConfiguration.LEGACY_ACTIVE_AUDIT_CHECKS
-                    "PASSIVE"        -> BuiltInAuditConfiguration.LEGACY_PASSIVE_AUDIT_CHECKS
-                    "LEGACY_PASSIVE" -> BuiltInAuditConfiguration.LEGACY_PASSIVE_AUDIT_CHECKS
-                    else             -> BuiltInAuditConfiguration.LEGACY_ACTIVE_AUDIT_CHECKS
-                }
+                val builtIn = builtInAuditConfiguration(req.configuration)
+                    ?: return@post call.respond(HttpStatusCode.BadRequest, invalidAuditConfiguration("configuration", req.configuration))
                 val auditConfig = AuditConfiguration.auditConfiguration(builtIn)
                 val audit = api.scanner().startAudit(auditConfig)
                 audit.addRequest(item.request())
@@ -329,3 +321,26 @@ fun Routing.scannerRoutes(api: MontoyaApi) {
         }
     }
 }
+
+// ── Audit configuration names ──────────────────────────────────────────────────
+//
+// Montoya's BuiltInAuditConfiguration has only LEGACY_ACTIVE_AUDIT_CHECKS and
+// LEGACY_PASSIVE_AUDIT_CHECKS. The three audit endpoints used to disagree on how to read
+// that: /audit passed the raw string to valueOf with a default of
+// CRAWL_AND_AUDIT_EVERYTHING_FAST, which is not a constant, so it failed unless the caller
+// already knew the exact name; /audit/from-history turned any unrecognised value into an
+// active audit, so a typo'd "PASIVE" sent attack payloads. All three now share this, and
+// an unrecognised name is refused rather than guessed at.
+private val AUDIT_CONFIGURATION_ALIASES = mapOf(
+    "ACTIVE" to BuiltInAuditConfiguration.LEGACY_ACTIVE_AUDIT_CHECKS,
+    "LEGACY_ACTIVE" to BuiltInAuditConfiguration.LEGACY_ACTIVE_AUDIT_CHECKS,
+    "PASSIVE" to BuiltInAuditConfiguration.LEGACY_PASSIVE_AUDIT_CHECKS,
+    "LEGACY_PASSIVE" to BuiltInAuditConfiguration.LEGACY_PASSIVE_AUDIT_CHECKS
+) + BuiltInAuditConfiguration.values().associateBy { it.name }
+
+private fun builtInAuditConfiguration(raw: String): BuiltInAuditConfiguration? =
+    AUDIT_CONFIGURATION_ALIASES[raw.trim().uppercase()]
+
+private fun invalidAuditConfiguration(field: String, raw: String) = ErrorResponse(
+    "Invalid '$field': '$raw'. Allowed values: ${AUDIT_CONFIGURATION_ALIASES.keys.joinToString(", ")}"
+)

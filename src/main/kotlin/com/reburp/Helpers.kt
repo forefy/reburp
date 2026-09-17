@@ -134,16 +134,6 @@ fun diffLines(a: String, b: String): String {
     }.trim()
 }
 
-fun decodeJwt(token: String): String {
-    val parts = token.trim().split(".")
-    if (parts.size < 2) return "Invalid JWT: expected header.payload.signature"
-    val decoder = Base64.getUrlDecoder()
-    val header = runCatching { String(decoder.decode(parts[0]), Charsets.UTF_8) }.getOrElse { "<invalid>" }
-    val payload = runCatching { String(decoder.decode(parts[1]), Charsets.UTF_8) }.getOrElse { "<invalid>" }
-    val sig = parts.getOrElse(2) { "" }
-    return "header=$header\npayload=$payload\nsignature=$sig"
-}
-
 fun normalizeHashAlgorithm(raw: String): String = when (raw.trim().uppercase()) {
     "SHA1" -> "SHA-1"
     "SHA256" -> "SHA-256"

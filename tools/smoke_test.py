@@ -371,6 +371,42 @@ def main():
                 verify=lambda p: None if f"({len(listed)} rules)" in (p or {}).get("error", "")
                 else f"wrong count in message: {p}")
 
+    print("\nSpec integrity and defaults")
+    # operationIds must be unique or generated clients silently drop one of the endpoints.
+    c.check("operationIds are unique", "GET", "/openapi.json",
+            verify=lambda p: None if len({op["operationId"] for pth in p["paths"].values()
+                                          for op in pth.values() if isinstance(op, dict) and "operationId" in op})
+            == sum(1 for pth in p["paths"].values() for op in pth.values() if isinstance(op, dict) and "operationId" in op)
+            else "duplicate operationId in the spec")
+    probe = "GET /a?q=1&r=2 HTTP/1.1\r\nHost: example.com\r\n\r\n"
+    # mode used to default to ALL_PARAMETERS, which Montoya does not have, so omitting it failed.
+    c.check("insertion points work with the default mode", "POST", "/api/http/insertion-points",
+            {"request": probe}, verify=lambda p: None if isinstance(p, list) and p
+            else f"no insertion points: {p}")
+    c.check("insertion points reject an unknown mode by name", "POST", "/api/http/insertion-points",
+            {"request": probe, "mode": "ALL_PARAMETERS"}, expect=400,
+            verify=lambda p: None if "REPLACE_BASE_PARAMETER_VALUE_WITH_OFFSETS" in (p or {}).get("error", "")
+            else f"error does not list the allowed modes: {p}")
+    # Used to return one flattened "header=...\npayload=..." string instead of the documented parts.
+    c.check("utils JWT decode returns structured parts", "POST", "/api/utils/jwt/decode",
+            {"value": "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.c2ln"},
+            verify=lambda p: None if isinstance(p.get("header"), dict) and isinstance(p.get("payload"), dict)
+            and p["payload"].get("sub") == "1" else f"not decoded into parts: {p}")
+    # Empty lists were dropped from the JSON because they equalled the field default.
+    c.check("header edit always reports not_found", "POST", "/api/http/message/request/headers",
+            {"raw": probe, "add": [{"name": "X-Smoke", "value": "1"}]},
+            verify=lambda p: None if isinstance(p.get("not_found"), list) and isinstance(p.get("applied"), list)
+            else f"missing list fields: {sorted(p)}")
+    # These return before any audit starts, so they are safe against a live Burp. Community
+    # edition answers 403 first, which counts as a skip.
+    c.check("audit rejects a configuration Montoya lacks", "POST", "/api/scanner/audit",
+            {"configuration": "CRAWL_AND_AUDIT_EVERYTHING_FAST", "requests": []}, expect=400, tolerate=(403,),
+            verify=lambda p: None if "Allowed values" in (p or {}).get("error", "") else f"unhelpful: {p}")
+    c.check("audit from history refuses a typo instead of going active", "POST",
+            "/api/scanner/audit/from-history", {"index": 0, "configuration": "PASIVE"},
+            expect=400, tolerate=(403, 404),
+            verify=lambda p: None if "PASIVE" in (p or {}).get("error", "") else f"typo was not refused: {p}")
+
     print("\nActivity log")
     # Paging used to return the oldest calls with limit silently capped and no total, so a
     # busy log looked frozen and a page was indistinguishable from the whole thing.

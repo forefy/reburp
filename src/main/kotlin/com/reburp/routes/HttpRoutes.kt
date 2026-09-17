@@ -272,7 +272,12 @@ fun Routing.httpRoutes(api: MontoyaApi, activityLog: ActivityLogTab? = null) {
             }
             runCatching {
                 val httpReq = HttpRequest.httpRequest(req.request)
-                val option = HttpRequestTemplateGenerationOptions.valueOf(req.mode.trim().uppercase())
+                val option = runCatching { HttpRequestTemplateGenerationOptions.valueOf(req.mode.trim().uppercase()) }
+                    .getOrNull() ?: return@post call.respond(
+                        HttpStatusCode.BadRequest,
+                        ErrorResponse("Invalid 'mode': '${req.mode}'. Allowed values: " +
+                            HttpRequestTemplateGenerationOptions.values().joinToString(", ") { it.name })
+                    )
                 val template = HttpRequestTemplate.httpRequestTemplate(httpReq, option)
                 call.respond(
                     template.insertionPointOffsets().map { InsertionPointDto(it.startIndexInclusive(), it.endIndexExclusive()) }

@@ -41,7 +41,7 @@ starts on port 9090 and adds a **reburp** tab. Re-check `GET /api/status` to con
 | Start a scan, poll it (Pro) | `POST /api/scanner/audit`, `GET /api/scanner/tasks/{id}` |
 | Collaborator payload + poll (Pro) | `POST /api/collaborator/generate`, `GET /api/collaborator/poll/{secretKey}` |
 | Encode / decode / hash / JWT | `POST /api/utils/...` |
-| Rank history by how anomalous it looks | `GET /api/utils/rank` |
+| Rank history by how anomalous it looks | `POST /api/utils/rank` (body: `limit`, `offset`, `max_scored`, `scope_only`, `host`) |
 | Send request to Repeater / Intruder | `POST /api/repeater/send`, `POST /api/intruder/send` |
 
 ## Conventions
