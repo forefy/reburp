@@ -104,6 +104,8 @@ fun Routing.scannerRoutes(api: MontoyaApi) {
             runCatching {
                 val builtIn = builtInAuditConfiguration(req.configuration)
                     ?: return@post call.respond(HttpStatusCode.BadRequest, invalidAuditConfiguration("configuration", req.configuration))
+                if (req.requests.isNotEmpty() && req.host == null)
+                    return@post call.respond(HttpStatusCode.BadRequest, AUDIT_REQUESTS_NEED_HOST)
                 val audit = api.scanner().startAudit(AuditConfiguration.auditConfiguration(builtIn))
                 if (req.requests.isNotEmpty() && req.host != null) {
                     val service = httpService(req.host, req.port, req.use_https)
@@ -126,6 +128,8 @@ fun Routing.scannerRoutes(api: MontoyaApi) {
             runCatching {
                 val builtIn = builtInAuditConfiguration(req.mode)
                     ?: return@post call.respond(HttpStatusCode.BadRequest, invalidAuditConfiguration("mode", req.mode))
+                if (req.requests.isNotEmpty() && req.host == null)
+                    return@post call.respond(HttpStatusCode.BadRequest, AUDIT_REQUESTS_NEED_HOST)
                 val audit = api.scanner().startAudit(AuditConfiguration.auditConfiguration(builtIn))
                 if (req.requests.isNotEmpty() && req.host != null) {
                     val service = httpService(req.host, req.port, req.use_https)
@@ -343,4 +347,12 @@ private fun builtInAuditConfiguration(raw: String): BuiltInAuditConfiguration? =
 
 private fun invalidAuditConfiguration(field: String, raw: String) = ErrorResponse(
     "Invalid '$field': '$raw'. Allowed values: ${AUDIT_CONFIGURATION_ALIASES.keys.joinToString(", ")}"
+)
+
+// Requests without a host used to be dropped silently: the audit started empty and the call
+// answered 200 with request_count 0, indistinguishable from success. An audit with no requests
+// at all is still allowed, since /tasks/{id}/add can supply them later.
+private val AUDIT_REQUESTS_NEED_HOST = ErrorResponse(
+    "'requests' were given without 'host', so they cannot be addressed. Add host (and port/use_https " +
+        "if not 443/https), or omit requests to start an empty audit and add them via /api/scanner/tasks/{id}/add."
 )

@@ -343,7 +343,7 @@ fun openApiJson(port: Int): String = """
           "content": {
             "application/json": {
               "schema": { "${'$'}ref": "#/components/schemas/InterceptRuleRequest" },
-              "example": { "enabled": true, "match_type": "METHOD", "match_relationship": "MATCHES", "match_condition": "POST" }
+              "example": { "enabled": true, "boolean_operator": "and", "match_type": "http_method", "match_relationship": "matches", "match_condition": "POST" }
             }
           }
         },
@@ -2172,7 +2172,7 @@ fun openApiJson(port: Int): String = """
       "post": {
         "tags": ["Utilities"],
         "summary": "Compress string and return base64",
-        "description": "**[Montoya API]** Compresses a string and returns it base64-encoded. Supported encodings: GZIP, DEFLATE, BROTLI.",
+        "description": "**[Montoya API]** Compresses a string and returns it base64-encoded. Supported encodings: GZIP, DEFLATE. Montoya can decompress BROTLI but not produce it.",
         "operationId": "compress",
         "x-api-source": "montoya",
         "requestBody": {
@@ -3627,8 +3627,7 @@ ${extraPaths()}
 
       "StartAuditRequest": {
         "type": "object",
-        "description": "Start a Burp audit with a built-in scan configuration",
-        "required": ["requests"],
+        "description": "Start a Burp audit with a built-in scan configuration. requests may be omitted to start an empty audit and add them later via /api/scanner/tasks/{id}/add; when given, host is required.",
         "properties": {
           "configuration": {
             "type": "string",
@@ -3646,7 +3645,6 @@ ${extraPaths()}
       "StartAuditModeRequest": {
         "type": "object",
         "description": "Start a Burp audit using ACTIVE or PASSIVE mode",
-        "required": ["requests"],
         "properties": {
           "mode":      { "type": "string",  "default": "ACTIVE", "enum": ["ACTIVE", "PASSIVE", "LEGACY_ACTIVE_AUDIT_CHECKS", "LEGACY_PASSIVE_AUDIT_CHECKS"], "description": "Audit mode. Case-insensitive; an unrecognised value is rejected." },
           "host":      { "type": "string",  "nullable": true },
@@ -3787,7 +3785,7 @@ ${extraPaths()}
       "HashInput": {
         "type": "object",
         "description": "Input for legacy hash computation",
-        "required": ["algorithm", "value"],
+        "required": ["value"],
         "properties": {
           "algorithm": { "type": "string", "enum": ["MD5", "SHA1", "SHA256", "SHA512"], "default": "SHA256", "description": "Hash algorithm" },
           "value":     { "type": "string", "description": "String to hash" }
@@ -3860,7 +3858,7 @@ ${extraPaths()}
         "required": ["value"],
         "properties": {
           "value":    { "type": "string",  "description": "String to compress" },
-          "encoding": { "type": "string",  "enum": ["GZIP", "DEFLATE", "BROTLI"], "default": "GZIP", "description": "Compression algorithm to use" }
+          "encoding": { "type": "string",  "enum": ["GZIP", "DEFLATE"], "default": "GZIP", "description": "Compression algorithm to use. BROTLI is decompress-only in Montoya." }
         }
       },
 

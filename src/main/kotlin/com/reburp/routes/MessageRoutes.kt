@@ -876,6 +876,11 @@ fun Routing.messageRoutes(api: MontoyaApi) {
             if (req.connection_id != null && req.connection_id.isBlank()) {
                 return@post call.respond(HttpStatusCode.BadRequest, ErrorResponse("Invalid 'connection_id': '${req.connection_id}'. Omit the field entirely to use a fresh connection, or give it a non-blank label to pin several requests to one connection."))
             }
+            // Burp refuses connection reuse under AUTO ("Connection reuse only supported for specific
+            // HTTP versions"), and it only says so after the send has been attempted, as a 500.
+            if (req.connection_id != null && mode == HttpMode.AUTO) {
+                return@post call.respond(HttpStatusCode.BadRequest, ErrorResponse("'connection_id' needs a specific protocol, but 'http_mode' is AUTO. Burp only reuses connections for a fixed HTTP version, so set http_mode to HTTP_1, HTTP_2 or HTTP_2_IGNORE_ALPN, or drop connection_id."))
+            }
             if (req.server_name_indicator != null && req.server_name_indicator.isBlank()) {
                 return@post call.respond(HttpStatusCode.BadRequest, ErrorResponse("Invalid 'server_name_indicator': '${req.server_name_indicator}'. Omit the field to send the host as SNI, or give it a non-blank hostname."))
             }

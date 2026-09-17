@@ -407,6 +407,11 @@ def main():
             expect=400, tolerate=(403, 404),
             verify=lambda p: None if "PASIVE" in (p or {}).get("error", "") else f"typo was not refused: {p}")
 
+    c.check("audit refuses requests it cannot address", "POST", "/api/scanner/audit",
+            {"configuration": "PASSIVE", "requests": ["GET / HTTP/1.1\r\nHost: x\r\n\r\n"]},
+            expect=400, tolerate=(403,),
+            verify=lambda p: None if "host" in (p or {}).get("error", "") else f"not refused: {p}")
+
     print("\nQuery parameters are honoured")
     # A documented parameter the handler never reads answers 200 with unfiltered data, which a
     # caller cannot tell from a real answer. ?path on the config export was ignored this way.

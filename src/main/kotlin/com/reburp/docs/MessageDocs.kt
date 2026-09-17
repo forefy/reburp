@@ -659,7 +659,7 @@ internal fun messageSchemas(): String = """
           "port":                  { "type": "integer", "default": 443, "description": "Target port, 1 to 65535" },
           "secure":                { "type": "boolean", "default": true, "description": "Whether to speak TLS" },
           "http_mode":             { "type": "string",  "nullable": true, "enum": ["AUTO", "HTTP_1", "HTTP_2", "HTTP_2_IGNORE_ALPN"], "description": "Forces the protocol instead of negotiating it. HTTP_2_IGNORE_ALPN speaks HTTP/2 even when the server did not offer it, which is how request smuggling and downgrade tests are set up." },
-          "connection_id":         { "type": "string",  "nullable": true, "description": "Label that pins this request to a named connection. Reuse it across calls to measure a warm request instead of a fresh handshake, or to keep a stateful sequence on one socket." },
+          "connection_id":         { "type": "string",  "nullable": true, "description": "Label that pins this request to a named connection. Reuse it across calls to measure a warm request instead of a fresh handshake, or to keep a stateful sequence on one socket. Burp only reuses connections for a specific protocol, so set http_mode explicitly (e.g. HTTP_1); AUTO is rejected." },
           "server_name_indicator": { "type": "string",  "nullable": true, "description": "SNI value to send, when it should differ from the target host. Requires `secure` to be true, since SNI exists only inside a TLS handshake." },
           "verify_upstream_tls":   { "type": "boolean", "default": false, "description": "Turns on upstream certificate verification, which Burp otherwise skips. Sending to a host with an invalid certificate then fails instead of succeeding quietly." }
         }

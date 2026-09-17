@@ -33,6 +33,12 @@ jobs:
       - name: Check Montoya API coverage
         run: python3 tools/api_coverage.py
 
+      # The OpenAPI spec is hand-written and has drifted from the code before: phantom and
+      # missing fields, duplicate operationIds, defaults outside their enums. These tests need
+      # no Burp, so they gate every push instead of waiting for a live smoke run.
+      - name: Check the OpenAPI spec against the code
+        run: ./gradlew test --no-daemon
+
       - name: Upload jar
         uses: actions/upload-artifact@v7
         with:
