@@ -5,19 +5,19 @@ import io.ktor.http.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
 
-fun Routing.docsRoutes(port: Int) {
+fun Routing.docsRoutes() {
     get("/") { call.respondRedirect("/docs") }
 
     get("/docs") {
-        call.respondText(swaggerHtml(port), ContentType.Text.Html)
+        call.respondText(SWAGGER_HTML, ContentType.Text.Html)
     }
 
     get("/openapi.json") {
-        call.respondText(openApiJson(port), ContentType.Application.Json)
+        call.respondText(openApiJson(), ContentType.Application.Json)
     }
 }
 
-private fun swaggerHtml(port: Int) = """
+private val SWAGGER_HTML = """
 <!DOCTYPE html>
 <html>
 <head>
@@ -37,7 +37,7 @@ private fun swaggerHtml(port: Int) = """
   <script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
   <script>
     SwaggerUIBundle({
-      url: "http://localhost:$port/openapi.json",
+      url: "/openapi.json",
       dom_id: '#swagger-ui',
       presets: [SwaggerUIBundle.presets.apis, SwaggerUIBundle.SwaggerUIStandalonePreset],
       layout: "BaseLayout",

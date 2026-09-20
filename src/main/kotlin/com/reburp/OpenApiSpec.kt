@@ -1,6 +1,6 @@
 package com.reburp
 
-fun openApiJson(port: Int): String = """
+fun openApiJson(): String = """
 {
   "openapi": "3.0.0",
   "info": {
@@ -9,7 +9,7 @@ fun openApiJson(port: Int): String = """
     "version": "2.0.0",
     "contact": { "name": "reburp" }
   },
-  "servers": [{ "url": "http://localhost:$port" }],
+  "servers": [{ "url": "/" }],
   "tags": [
     { "name": "Status",       "description": "Extension and Burp version info" },
     { "name": "Proxy",        "description": "Proxy HTTP and WebSocket history, intercept toggle" },
