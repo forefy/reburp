@@ -59,8 +59,8 @@ class BurpRestApiExtension : BurpExtension {
             return
         }
 
-        api.logging().logToOutput("reburp $REBURP_VERSION listening on http://localhost:$port")
-        api.logging().logToOutput("API docs:              http://localhost:$port/docs")
+        api.logging().logToOutput("reburp $REBURP_VERSION listening on http://127.0.0.1:$port")
+        api.logging().logToOutput("API docs:              http://127.0.0.1:$port/docs")
 
         api.extension().registerUnloadingHandler {
             // Detach the event observers before stopping the server. An observer left

@@ -5,8 +5,10 @@ import io.ktor.http.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
 
+// Every URL here is relative, so the page keeps working when a proxy serves reburp under a
+// sub-path (e.g. tailscale serve --set-path /reburp) and not just at the root.
 fun Routing.docsRoutes() {
-    get("/") { call.respondRedirect("/docs") }
+    get("/") { call.respondRedirect("docs") }
 
     get("/docs") {
         call.respondText(SWAGGER_HTML, ContentType.Text.Html)
@@ -37,7 +39,7 @@ private val SWAGGER_HTML = """
   <script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
   <script>
     SwaggerUIBundle({
-      url: "/openapi.json",
+      url: "openapi.json",
       dom_id: '#swagger-ui',
       presets: [SwaggerUIBundle.presets.apis, SwaggerUIBundle.SwaggerUIStandalonePreset],
       layout: "BaseLayout",

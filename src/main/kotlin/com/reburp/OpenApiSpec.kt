@@ -9,7 +9,7 @@ fun openApiJson(): String = """
     "version": "2.0.0",
     "contact": { "name": "reburp" }
   },
-  "servers": [{ "url": "/" }],
+  "servers": [{ "url": "." }],
   "tags": [
     { "name": "Status",       "description": "Extension and Burp version info" },
     { "name": "Proxy",        "description": "Proxy HTTP and WebSocket history, intercept toggle" },
@@ -47,7 +47,7 @@ fun openApiJson(): String = """
                   "version": "2.0.0",
                   "edition": "PROFESSIONAL",
                   "port": 8090,
-                  "docs_url": "http://localhost:8090/docs",
+                  "docs_url": "http://127.0.0.1:8090/docs",
                   "project_name": "MyProject",
                   "project_id": "abc-123",
                   "command_line_args": []
@@ -3242,7 +3242,7 @@ ${extraPaths()}
           "version":           { "type": "string",  "description": "Burp's version string, e.g. \"Burp Suite Professional\". This is Burp's version, not reburp's." },
           "edition":           { "type": "string",  "description": "Burp edition: COMMUNITY, PROFESSIONAL, or ENTERPRISE" },
           "port":              { "type": "integer", "description": "Port this REST server is listening on" },
-          "docs_url":          { "type": "string",  "description": "URL to the OpenAPI documentation UI" },
+          "docs_url":          { "type": "string",  "description": "URL to the Swagger UI, built from the address the caller used (Host, X-Forwarded-Proto, X-Forwarded-Prefix)" },
           "project_name":      { "type": "string",  "description": "Current Burp project name (null for temporary project)" },
           "project_id":        { "type": "string",  "description": "Current Burp project unique ID" },
           "command_line_args": { "type": "array", "items": { "type": "string" }, "description": "Burp command-line arguments" }
