@@ -24,7 +24,7 @@ import kotlin.test.fail
  */
 class OpenApiSpecTest {
 
-    private val spec: JsonObject = Json.parseToJsonElement(openApiJson(9090)).jsonObject
+    private val spec: JsonObject = Json.parseToJsonElement(openApiJson()).jsonObject
     private val schemas: JsonObject = spec["components"]!!.jsonObject["schemas"]!!.jsonObject
     private val paths: JsonObject = spec["paths"]!!.jsonObject
 

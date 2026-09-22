@@ -118,7 +118,7 @@ class RestApiServer(private val api: MontoyaApi, val port: Int = 9090, private v
             }
 
             routing {
-                docsRoutes(port)
+                docsRoutes()
                 statusRoutes(api, port)
                 proxyRoutes(api)
                 siteMapRoutes(api)
