@@ -39,10 +39,14 @@ data class LogEntry(
     val responseBody: String,
     var notes: String = "",
     val sessionId: String? = null,
+    /** Target host this call drove Burp to reach, blank when the call had no target. */
+    val host: String = "",
+    /** Absolute target URL, used for scope checks. Null when there is no target. */
+    val targetUrl: String? = null,
 )
 
 private class LogTableModel : AbstractTableModel() {
-    private val cols    = arrayOf("#", "Time", "Method", "Status", "ms", "Path", "AI Notes")
+    private val cols    = arrayOf("#", "Time", "Method", "Status", "ms", "Host", "Path", "AI Notes")
     private val entries = mutableListOf<LogEntry>()
 
     fun add(entry: LogEntry) {
@@ -70,8 +74,9 @@ private class LogTableModel : AbstractTableModel() {
             2 -> e.method
             3 -> if (e.status == 0) "" else e.status.toString()
             4 -> e.durationMs
-            5 -> e.path
-            6 -> e.notes
+            5 -> e.host
+            6 -> e.path
+            7 -> e.notes
             else -> ""
         }
     }
@@ -98,6 +103,15 @@ class ActivityLogTab(private val api: MontoyaApi) {
     private val nestedResponseEditor: HttpResponseEditor = api.userInterface().createHttpResponseEditor(EditorOptions.READ_ONLY)
     private val requestTabs  = JTabbedPane()
     private val responseTabs = JTabbedPane()
+
+    // ── filter controls ───────────────────────────────────────────────────────
+    private val filterField   = JTextField(20)
+    private val filterTarget  = JComboBox(FilterTarget.entries.map { it.label }.toTypedArray())
+    private val filterBodies  = JCheckBox("Bodies")
+    private val filterInScope = JCheckBox("In scope only")
+
+    /** isInScope() hits Burp's config, so memoise it per URL for the duration of a filter. */
+    private val scopeCache = HashMap<String, Boolean>()
 
     val panel = JPanel(BorderLayout())
 
@@ -162,8 +176,9 @@ class ActivityLogTab(private val api: MontoyaApi) {
         cm.getColumn(2).preferredWidth = 68   // Method
         cm.getColumn(3).preferredWidth = 110  // Status
         cm.getColumn(4).preferredWidth = 58   // ms
-        cm.getColumn(5).preferredWidth = 380  // Path
-        cm.getColumn(6).preferredWidth = 160  // Notes
+        cm.getColumn(5).preferredWidth = 170  // Host
+        cm.getColumn(6).preferredWidth = 330  // Path
+        cm.getColumn(7).preferredWidth = 160  // Notes
 
         // Method renderer - colored badges
         val methodRenderer = object : DefaultTableCellRenderer() {
@@ -248,7 +263,7 @@ class ActivityLogTab(private val api: MontoyaApi) {
                 return this
             }
         }
-        cm.getColumn(6).cellRenderer = notesRenderer
+        cm.getColumn(7).cellRenderer = notesRenderer
 
         table.selectionModel.addListSelectionListener { e: ListSelectionEvent ->
             if (!e.valueIsAdjusting && table.selectedRow >= 0) {
@@ -299,6 +314,25 @@ class ActivityLogTab(private val api: MontoyaApi) {
             ?: return null
         val service = serviceFor(entry, rawRequest) ?: return null
         return Pair(HttpRequest.httpRequest(service, rawRequest), entry.path)
+    }
+
+    // ── target resolution ─────────────────────────────────────────────────────
+
+    /** Service a logged call drove Burp to reach, resolved from the bodies alone. */
+    private fun serviceOf(requestBody: String, responseBody: String): HttpService? =
+        serviceFromJson(requestBody)
+            ?: serviceFromJson(responseBody)
+            ?: (extractNestedRequest(responseBody) ?: extractNestedRequest(requestBody))
+                ?.let { serviceFromHostHeader(it, defaultHttps = true) }
+
+    /** Absolute URL for a scope check. The default port is left off so it matches Burp's form. */
+    private fun urlOf(service: HttpService, path: String): String {
+        val scheme      = if (service.secure()) "https" else "http"
+        val defaultPort = if (service.secure()) 443 else 80
+        val authority   = if (service.port() == defaultPort) service.host()
+                          else "${service.host()}:${service.port()}"
+        val tail        = path.ifBlank { "/" }.let { if (it.startsWith("/")) it else "/$it" }
+        return "$scheme://$authority$tail"
     }
 
     // ── service resolution ────────────────────────────────────────────────────
@@ -363,13 +397,30 @@ class ActivityLogTab(private val api: MontoyaApi) {
         val countLbl = JLabel("0 calls")
         tableModel.addTableModelListener { countLbl.text = "${tableModel.rowCount} calls" }
 
-        val filterField = JTextField(22)
-        filterField.toolTipText = "Filter by method, path, or status  (regex supported)"
+        // Matching is literal and case insensitive: hosts are full of dots, and a dot that
+        // quietly means "any character" makes a host filter look like it works when it does not.
+        filterField.toolTipText = "Case insensitive substring match against the selected fields"
         filterField.document.addDocumentListener(object : DocumentListener {
-            override fun insertUpdate(e: DocumentEvent)  = applyFilter(filterField.text)
-            override fun removeUpdate(e: DocumentEvent)  = applyFilter(filterField.text)
-            override fun changedUpdate(e: DocumentEvent) = applyFilter(filterField.text)
+            override fun insertUpdate(e: DocumentEvent)  = applyFilter()
+            override fun removeUpdate(e: DocumentEvent)  = applyFilter()
+            override fun changedUpdate(e: DocumentEvent) = applyFilter()
         })
+
+        filterTarget.toolTipText =
+            "Which fields the text is matched against. Narrow this to stop a number matching a row id or a duration."
+        filterTarget.addActionListener { applyFilter() }
+
+        filterBodies.toolTipText =
+            "Also search the raw request and response text, not just the columns. Slower on a long log."
+        filterBodies.addActionListener { applyFilter() }
+
+        filterInScope.toolTipText =
+            "Show only calls whose target URL is in Burp's configured scope. Re-checked each time this is switched on."
+        filterInScope.addActionListener {
+            // Scope can be edited after the traffic was logged, so start from a clean slate.
+            scopeCache.clear()
+            applyFilter()
+        }
 
         val clearFilterBtn = JButton("x").also { b ->
             b.toolTipText = "Clear filter"
@@ -396,15 +447,42 @@ class ActivityLogTab(private val api: MontoyaApi) {
             bar.add(JLabel("Filter:"))
             bar.add(filterField)
             bar.add(clearFilterBtn)
+            bar.add(filterTarget)
+            bar.add(filterBodies)
+            bar.add(JSeparator(SwingConstants.VERTICAL).also { it.preferredSize = Dimension(1, 16) })
+            bar.add(filterInScope)
             bar.add(Box.createHorizontalStrut(8))
             bar.add(clearLogBtn)
         }
     }
 
-    private fun applyFilter(text: String) {
-        sorter.rowFilter = if (text.isBlank()) null
-        else try { RowFilter.regexFilter("(?i)${Regex.escape(text)}") }  // all columns
-        catch (_: Exception) { null }
+    /** Text matching lives in ActivityLogFilter.kt; scope is checked here, against Burp. */
+    private fun applyFilter() {
+        val needle     = filterField.text
+        val target     = FilterTarget.entries[filterTarget.selectedIndex.coerceIn(0, FilterTarget.entries.lastIndex)]
+        val bodies     = filterBodies.isSelected
+        val scopeOnly  = filterInScope.isSelected
+
+        if (needle.isBlank() && !scopeOnly) {
+            sorter.rowFilter = null
+            return
+        }
+
+        sorter.rowFilter = object : RowFilter<LogTableModel, Int>() {
+            override fun include(entry: Entry<out LogTableModel, out Int>): Boolean {
+                val row = tableModel.getEntry(entry.identifier)
+                if (scopeOnly && !isInScope(row)) return false
+                if (needle.isBlank()) return true
+                return matchesFilter(row, needle, target, bodies)
+            }
+        }
+    }
+
+    private fun isInScope(e: LogEntry): Boolean {
+        val url = e.targetUrl ?: return false
+        return scopeCache.getOrPut(url) {
+            runCatching { api.scope().isInScope(url) }.getOrDefault(false)
+        }
     }
 
     // ── entry renderer ────────────────────────────────────────────────────────
@@ -533,6 +611,7 @@ class ActivityLogTab(private val api: MontoyaApi) {
                 arrayOf(method, path, status, analyzeEntry(method, path, status, requestBody, responseBody))
             }
         }
+        val service = serviceOf(requestBody, responseBody)
         val entry = LogEntry(
             id             = counter.incrementAndGet(),
             timestamp      = LocalTime.now().format(fmt),
@@ -545,6 +624,8 @@ class ActivityLogTab(private val api: MontoyaApi) {
             responseBody   = responseBody,
             notes          = displayNotes  as String,
             sessionId      = sessionId,
+            host           = service?.host() ?: "",
+            targetUrl      = service?.let { urlOf(it, displayPath as String) },
         )
         SwingUtilities.invokeLater {
             tableModel.add(entry)
@@ -575,22 +656,33 @@ class ActivityLogTab(private val api: MontoyaApi) {
         put("resp_body",   e.responseBody)
         put("notes",       e.notes)
         if (e.sessionId != null) put("session_id", e.sessionId)
+        if (e.host.isNotBlank()) put("host", e.host)
+        if (e.targetUrl != null) put("target_url", e.targetUrl)
     }.toString()
 
     private fun entryFromJson(json: String): LogEntry {
         val o = Json.parseToJsonElement(json).jsonObject
+        val reqBody  = o["req_body"]?.jsonPrimitive?.content ?: ""
+        val respBody = o["resp_body"]?.jsonPrimitive?.content ?: ""
+        val path     = o["path"]!!.jsonPrimitive.content
+        // Rows persisted before the Host column existed still carry the bodies, so the
+        // target can be recovered rather than left blank.
+        val service  = if (o["host"] == null) serviceOf(reqBody, respBody) else null
         return LogEntry(
             id             = o["id"]!!.jsonPrimitive.int,
             timestamp      = o["ts"]!!.jsonPrimitive.content,
             method         = o["method"]!!.jsonPrimitive.content,
-            path           = o["path"]!!.jsonPrimitive.content,
+            path           = path,
             status         = o["status"]!!.jsonPrimitive.int,
             durationMs     = o["duration_ms"]!!.jsonPrimitive.long,
             requestHeaders = o["req_headers"]?.jsonPrimitive?.content ?: "",
-            requestBody    = o["req_body"]?.jsonPrimitive?.content ?: "",
-            responseBody   = o["resp_body"]?.jsonPrimitive?.content ?: "",
+            requestBody    = reqBody,
+            responseBody   = respBody,
             notes          = o["notes"]?.jsonPrimitive?.content ?: "",
             sessionId      = o["session_id"]?.jsonPrimitive?.contentOrNull,
+            host           = o["host"]?.jsonPrimitive?.contentOrNull ?: service?.host() ?: "",
+            targetUrl      = o["target_url"]?.jsonPrimitive?.contentOrNull
+                ?: service?.let { urlOf(it, path) },
         )
     }
 
