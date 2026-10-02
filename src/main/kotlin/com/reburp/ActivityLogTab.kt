@@ -293,15 +293,56 @@ class ActivityLogTab(private val api: MontoyaApi) {
     private fun selectedNestedRequest(): Pair<HttpRequest, String>? {
         val row = table.selectedRow.takeIf { it >= 0 } ?: return null
         val entry = tableModel.getEntry(table.convertRowIndexToModel(row))
-        val rawRequest = extractNestedRequest(entry.requestBody) ?: return null
+        // Same preference as showEntry(): the raw request Burp sent, else the reconstruction
+        val rawRequest = extractNestedRequest(entry.responseBody)
+            ?: extractNestedRequest(entry.requestBody)
+            ?: return null
+        val service = serviceFor(entry, rawRequest) ?: return null
+        return Pair(HttpRequest.httpRequest(service, rawRequest), entry.path)
+    }
+
+    // ── service resolution ────────────────────────────────────────────────────
+    //
+    // Requests handed to an editor must carry an HttpService, otherwise Burp's own
+    // message-editor menu ("Send to Repeater", "Scan", ...) has no target and
+    // Repeater prompts for host/port.
+
+    /** Target service of a logged call: from its JSON fields, else its Host header. */
+    private fun serviceFor(entry: LogEntry, rawRequest: String?): HttpService? =
+        serviceFromJson(entry.requestBody)
+            ?: serviceFromJson(entry.responseBody)
+            ?: rawRequest?.let { serviceFromHostHeader(it, defaultHttps = true) }
+
+    /** host/port/use_https as carried by the API bodies, incl. target_*, service_* and nested objects. */
+    private fun serviceFromJson(body: String): HttpService? {
+        if (body.isBlank()) return null
         return try {
-            val bodyJson = Json.parseToJsonElement(entry.requestBody).jsonObject
-            val host     = bodyJson["host"]?.jsonPrimitive?.content ?: return null
-            val port     = bodyJson["port"]?.jsonPrimitive?.intOrNull ?: 443
-            val useHttps = bodyJson["use_https"]?.jsonPrimitive?.booleanOrNull ?: true
-            val service  = HttpService.httpService(host, port, useHttps)
-            Pair(HttpRequest.httpRequest(service, rawRequest), entry.path)
+            val root = Json.parseToJsonElement(body) as? JsonObject ?: return null
+            val objects = listOfNotNull(root, root["request"] as? JsonObject, root["auth"] as? JsonObject)
+            for (obj in objects) {
+                for (prefix in listOf("", "target_", "service_")) {
+                    val host = (obj["${prefix}host"] as? JsonPrimitive)?.contentOrNull
+                        ?.takeIf { it.isNotBlank() } ?: continue
+                    val https = (obj["${prefix}use_https"] as? JsonPrimitive)?.booleanOrNull ?: true
+                    val port  = (obj["${prefix}port"] as? JsonPrimitive)?.intOrNull
+                        ?: if (https) 443 else 80
+                    return HttpService.httpService(host, port, https)
+                }
+            }
+            null
         } catch (_: Exception) { null }
+    }
+
+    /** Fallback: derive the service from the request's own Host header. */
+    private fun serviceFromHostHeader(raw: String, defaultHttps: Boolean): HttpService? {
+        val value = Regex("(?im)^Host:[ \\t]*(\\S+)[ \\t]*$").find(raw)?.groupValues?.get(1) ?: return null
+        val colon = value.lastIndexOf(':')
+        val port  = if (colon > 0) value.substring(colon + 1).toIntOrNull() else null
+        val host  = if (port != null) value.substring(0, colon) else value
+        val https = when (port) { 80 -> false; 443 -> true; else -> defaultHttps }
+        return runCatching {
+            HttpService.httpService(host, port ?: if (https) 443 else 80, https)
+        }.getOrNull()
     }
 
     // ── layout helpers ────────────────────────────────────────────────────────
@@ -392,7 +433,11 @@ class ActivityLogTab(private val api: MontoyaApi) {
             }
         }
 
-        requestEditor.setRequest(HttpRequest.httpRequest(rawReq))
+        val apiService = serviceFromHostHeader(rawReq, defaultHttps = false)
+        requestEditor.setRequest(
+            if (apiService != null) HttpRequest.httpRequest(apiService, rawReq)
+            else HttpRequest.httpRequest(rawReq)
+        )
         responseEditor.setResponse(HttpResponse.httpResponse(rawResp))
 
         // Prefer the actual raw request Burp sent (in responseBody["request"]),
@@ -400,8 +445,9 @@ class ActivityLogTab(private val api: MontoyaApi) {
         val nested = extractNestedRequest(entry.responseBody)
             ?: extractNestedRequest(entry.requestBody)
         nestedRequestEditor.setRequest(
-            if (nested != null) HttpRequest.httpRequest(nested)
-            else HttpRequest.httpRequest()
+            if (nested == null) HttpRequest.httpRequest()
+            else serviceFor(entry, nested)?.let { HttpRequest.httpRequest(it, nested) }
+                ?: HttpRequest.httpRequest(nested)
         )
 
         // Decode nested HTTP response from the response body (e.g. /api/http/send "response" field)
