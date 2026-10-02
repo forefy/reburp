@@ -13,6 +13,8 @@ import kotlinx.serialization.json.*
 import java.awt.*
 import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
+import java.io.File
+import java.time.LocalDateTime
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 import java.util.concurrent.atomic.AtomicInteger
@@ -21,6 +23,7 @@ import javax.swing.RowSorter
 import javax.swing.SortOrder
 import javax.swing.border.EmptyBorder
 import javax.swing.event.DocumentEvent
+import javax.swing.filechooser.FileNameExtensionFilter
 import javax.swing.event.DocumentListener
 import javax.swing.event.ListSelectionEvent
 import javax.swing.table.AbstractTableModel
@@ -379,6 +382,102 @@ class ActivityLogTab(private val api: MontoyaApi) {
         }.getOrNull()
     }
 
+    // ── export ────────────────────────────────────────────────────────────────
+
+    /** Columns in the order the table shows them, with the session id appended. */
+    private fun exportColumns(): List<LogColumn> =
+        (0 until table.columnModel.columnCount)
+            .map { LogColumn.entries[table.convertColumnIndexToModel(it)] } + LogColumn.SESSION
+
+    /**
+     * Rows the table currently shows: the active filter, in the active sort order.
+     *
+     * The reburp API call and its reply are the extension talking to itself, so they are
+     * left out unless asked for: a report about the target reads better without them.
+     */
+    private fun exportRows(includeApiMessages: Boolean): List<ExportRow> =
+        (0 until table.rowCount).map { view ->
+            val entry = tableModel.getEntry(table.convertRowIndexToModel(view))
+            ExportRow(
+                entry          = entry,
+                apiRequest     = if (includeApiMessages) rawApiRequest(entry) else null,
+                apiResponse    = if (includeApiMessages) rawApiResponse(entry) else null,
+                targetRequest  = extractNestedRequest(entry.responseBody)
+                    ?: extractNestedRequest(entry.requestBody),
+                targetResponse = extractNestedResponse(entry.responseBody),
+            )
+        }
+
+    private fun exportLog() {
+        if (table.rowCount == 0) {
+            JOptionPane.showMessageDialog(
+                panel, "Nothing to export: no rows are visible.", "Export",
+                JOptionPane.INFORMATION_MESSAGE,
+            )
+            return
+        }
+
+        val rowCount = table.rowCount
+        val includeApi = JCheckBox("Include reburp API request/response")
+        includeApi.toolTipText =
+            "The extension's own call and reply. Off by default so the report covers target traffic only."
+        val options = JPanel()
+        options.layout = BoxLayout(options, BoxLayout.Y_AXIS)
+        options.border = EmptyBorder(4, 10, 4, 4)
+        options.add(JLabel("HTML report contents"))
+        options.add(Box.createVerticalStrut(4))
+        options.add(includeApi)
+
+        val stamp    = LocalDateTime.now().format(EXPORT_STAMP_FMT)
+        val htmlFilt = FileNameExtensionFilter("HTML report (*.html)", "html", "htm")
+        val csvFilt  = FileNameExtensionFilter("CSV spreadsheet (*.csv)", "csv")
+
+        val chooser = JFileChooser()
+        chooser.dialogTitle = "Export $rowCount log row${if (rowCount == 1) "" else "s"}"
+        chooser.accessory = options
+        chooser.isAcceptAllFileFilterUsed = false
+        chooser.addChoosableFileFilter(htmlFilt)
+        chooser.addChoosableFileFilter(csvFilt)
+        chooser.fileFilter   = htmlFilt
+        chooser.selectedFile = File("reburp-log-$stamp.html")
+        // Keep the suggested name in step with the chosen format.
+        chooser.addPropertyChangeListener(JFileChooser.FILE_FILTER_CHANGED_PROPERTY) {
+            val csv = chooser.fileFilter == csvFilt
+            chooser.selectedFile = File("reburp-log-$stamp.${if (csv) "csv" else "html"}")
+            // CSV carries the table columns only, so the message option does not apply.
+            includeApi.isEnabled = !csv
+        }
+        if (chooser.showSaveDialog(panel) != JFileChooser.APPROVE_OPTION) return
+
+        val asCsv = chooser.fileFilter == csvFilt
+        var file  = chooser.selectedFile
+        val ext   = file.name.substringAfterLast('.', "").lowercase()
+        if (ext != (if (asCsv) "csv" else "html") && ext != "htm") {
+            file = File(file.parentFile, "${file.name}.${if (asCsv) "csv" else "html"}")
+        }
+        if (file.exists()) {
+            val answer = JOptionPane.showConfirmDialog(
+                panel, "${file.name} already exists. Overwrite it?", "Export",
+                JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE,
+            )
+            if (answer != JOptionPane.YES_OPTION) return
+        }
+
+        val columns = exportColumns()
+        val rows    = exportRows(includeApiMessages = includeApi.isSelected && !asCsv)
+        val text    = if (asCsv) exportCsv(rows, columns)
+                      else exportHtml(rows, columns, LocalDateTime.now().format(EXPORT_SHOWN_FMT))
+        runCatching { file.writeText(text) }
+            .onSuccess {
+                api.logging().logToOutput("reburp: exported $rowCount log rows to ${file.absolutePath}")
+            }
+            .onFailure {
+                JOptionPane.showMessageDialog(
+                    panel, "Export failed: ${it.message}", "Export", JOptionPane.ERROR_MESSAGE,
+                )
+            }
+    }
+
     // ── layout helpers ────────────────────────────────────────────────────────
 
     private fun labeledPane(title: String, comp: Component): JPanel {
@@ -428,6 +527,10 @@ class ActivityLogTab(private val api: MontoyaApi) {
             b.addActionListener { filterField.text = "" }
         }
 
+        val exportBtn = JButton("Export")
+        exportBtn.toolTipText = "Save the visible rows as an HTML report or a CSV file"
+        exportBtn.addActionListener { exportLog() }
+
         val clearLogBtn = JButton("Clear log")
         clearLogBtn.addActionListener {
             SwingUtilities.invokeLater {
@@ -452,6 +555,7 @@ class ActivityLogTab(private val api: MontoyaApi) {
             bar.add(JSeparator(SwingConstants.VERTICAL).also { it.preferredSize = Dimension(1, 16) })
             bar.add(filterInScope)
             bar.add(Box.createHorizontalStrut(8))
+            bar.add(exportBtn)
             bar.add(clearLogBtn)
         }
     }
@@ -487,29 +591,34 @@ class ActivityLogTab(private val api: MontoyaApi) {
 
     // ── entry renderer ────────────────────────────────────────────────────────
 
-    private fun showEntry(entry: LogEntry) {
-        val rawReq = buildString {
-            append("${entry.method} ${entry.path} HTTP/1.1\r\n")
-            if (entry.requestHeaders.isNotBlank()) {
-                append(entry.requestHeaders)
-                if (!entry.requestHeaders.endsWith("\n")) append("\r\n")
-            }
-            append("\r\n")
-            if (entry.requestBody.isNotBlank()) append(entry.requestBody.trim())
+    /** The reburp API call itself, rendered as a raw HTTP request. */
+    private fun rawApiRequest(entry: LogEntry): String = buildString {
+        append("${entry.method} ${entry.path} HTTP/1.1\r\n")
+        if (entry.requestHeaders.isNotBlank()) {
+            append(entry.requestHeaders)
+            if (!entry.requestHeaders.endsWith("\n")) append("\r\n")
         }
+        append("\r\n")
+        if (entry.requestBody.isNotBlank()) append(entry.requestBody.trim())
+    }
 
-        val rawResp = buildString {
-            append("HTTP/1.1 ${statusLine(entry.status)}\r\n")
-            if (entry.responseBody.isNotBlank()) {
-                val body = entry.responseBody.trim()
-                append("Content-Type: application/json\r\n")
-                append("Content-Length: ${body.toByteArray().size}\r\n")
-                append("\r\n")
-                append(body)
-            } else {
-                append("\r\n")
-            }
+    /** The reburp API reply, rendered as a raw HTTP response. */
+    private fun rawApiResponse(entry: LogEntry): String = buildString {
+        append("HTTP/1.1 ${statusLine(entry.status)}\r\n")
+        if (entry.responseBody.isNotBlank()) {
+            val body = entry.responseBody.trim()
+            append("Content-Type: application/json\r\n")
+            append("Content-Length: ${body.toByteArray().size}\r\n")
+            append("\r\n")
+            append(body)
+        } else {
+            append("\r\n")
         }
+    }
+
+    private fun showEntry(entry: LogEntry) {
+        val rawReq  = rawApiRequest(entry)
+        val rawResp = rawApiResponse(entry)
 
         val apiService = serviceFromHostHeader(rawReq, defaultHttps = false)
         requestEditor.setRequest(
@@ -689,6 +798,8 @@ class ActivityLogTab(private val api: MontoyaApi) {
     fun allEntries(): List<LogEntry> = (0 until tableModel.rowCount).map { tableModel.getEntry(it) }
 
     companion object {
+        private val EXPORT_STAMP_FMT = DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss")
+        private val EXPORT_SHOWN_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
         private const val MAX_PERSISTED_ENTRIES = 2000
     }
 }
