@@ -135,6 +135,13 @@ class ActivityLogExportTest {
     }
 
     @Test
+    fun `api request shows the reburp call rather than the displayed target line`() {
+        val sent = entry(method = "POST", path = "/login").copy(apiMethod = "POST", apiPath = "/api/http/send")
+        assertTrue(apiRequestText(sent).startsWith("POST /api/http/send HTTP/1.1\r\nHost: 127.0.0.1:9090\r\n"))
+        assertTrue(apiRequestText(entry()).startsWith("GET /api/users/1 HTTP/1.1\r\n"))
+    }
+
+    @Test
     fun `session column falls back to an empty field`() {
         val withSession = exportCsv(listOf(row(entry(sessionId = "s-42"))), listOf(LogColumn.SESSION))
         assertEquals("Session\r\ns-42", withSession.trim())
