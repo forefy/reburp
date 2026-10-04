@@ -174,6 +174,7 @@ private fun htmlHead() = """
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>reburp activity log</title>
 <style>

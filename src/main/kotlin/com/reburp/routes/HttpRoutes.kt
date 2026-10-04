@@ -672,18 +672,18 @@ fun Routing.httpRoutes(api: MontoyaApi, activityLog: ActivityLogTab? = null) {
             val pocType = if (verdict.startsWith("PRIVILEGE ESCALATION") || verdict.startsWith("POSSIBLE PRIVILEGE")) "Priv Escalation PoC" else "Auth Bypass PoC"
 
             activityLog.log(req.method, req.path, authed.status, 0, "", "", "",
-                sessionId = sessionId,
+                sessionId = sessionId, target = service,
                 forcedNotes = "$pocType [1/$total] Authenticated - ${authed.status} (${authed.body_length}B)${authed.ai_notes?.let { " - $it" } ?: ""}"
             )
             secondUser?.let {
                 activityLog.log(req.method, req.path, it.status, 0, "", "", "",
-                    sessionId = sessionId,
+                    sessionId = sessionId, target = service,
                     forcedNotes = "$pocType [2/$total] Low-Priv User - ${it.status} (${it.body_length}B)${it.ai_notes?.let { n -> " - $n" } ?: ""} | $verdict"
                 )
             }
             val unauthIdx = if (secondUser != null) 3 else 2
             activityLog.log(req.method, req.path, unauthed.status, 0, "", "", "",
-                sessionId = sessionId,
+                sessionId = sessionId, target = service,
                 forcedNotes = "$pocType [$unauthIdx/$total] Unauthenticated - ${unauthed.status} (${unauthed.body_length}B) | $verdict"
             )
         }
