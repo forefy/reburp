@@ -46,6 +46,10 @@ data class LogEntry(
     val host: String = "",
     /** Absolute target URL, used for scope checks. Null when there is no target. */
     val targetUrl: String? = null,
+    /** Method, path and status of the reburp API call itself, when the row displays the target's instead. */
+    val apiMethod: String? = null,
+    val apiPath: String? = null,
+    val apiStatus: Int? = null,
 )
 
 private class LogTableModel : AbstractTableModel() {
@@ -402,7 +406,7 @@ class ActivityLogTab(private val api: MontoyaApi) {
             val entry = tableModel.getEntry(table.convertRowIndexToModel(view))
             ExportRow(
                 entry          = entry,
-                apiRequest     = if (includeApiMessages) rawApiRequest(entry) else null,
+                apiRequest     = if (includeApiMessages) apiRequestText(entry) else null,
                 apiResponse    = if (includeApiMessages) rawApiResponse(entry) else null,
                 targetRequest  = extractNestedRequest(entry.responseBody)
                     ?: extractNestedRequest(entry.requestBody),
@@ -594,20 +598,9 @@ class ActivityLogTab(private val api: MontoyaApi) {
 
     // ── entry renderer ────────────────────────────────────────────────────────
 
-    /** The reburp API call itself, rendered as a raw HTTP request. */
-    private fun rawApiRequest(entry: LogEntry): String = buildString {
-        append("${entry.method} ${entry.path} HTTP/1.1\r\n")
-        if (entry.requestHeaders.isNotBlank()) {
-            append(entry.requestHeaders)
-            if (!entry.requestHeaders.endsWith("\n")) append("\r\n")
-        }
-        append("\r\n")
-        if (entry.requestBody.isNotBlank()) append(entry.requestBody.trim())
-    }
-
     /** The reburp API reply, rendered as a raw HTTP response. */
     private fun rawApiResponse(entry: LogEntry): String = buildString {
-        append("HTTP/1.1 ${statusLine(entry.status)}\r\n")
+        append("HTTP/1.1 ${statusLine(entry.apiStatus ?: entry.status)}\r\n")
         if (entry.responseBody.isNotBlank()) {
             val body = entry.responseBody.trim()
             append("Content-Type: application/json\r\n")
@@ -620,7 +613,7 @@ class ActivityLogTab(private val api: MontoyaApi) {
     }
 
     private fun showEntry(entry: LogEntry) {
-        val rawReq  = rawApiRequest(entry)
+        val rawReq  = apiRequestText(entry)
         val rawResp = rawApiResponse(entry)
 
         val apiService = serviceFromHostHeader(rawReq, defaultHttps = false)
@@ -739,6 +732,9 @@ class ActivityLogTab(private val api: MontoyaApi) {
             sessionId      = sessionId,
             host           = service?.host() ?: "",
             targetUrl      = service?.let { urlOf(it, displayPath as String) },
+            apiMethod      = method.takeIf { it != displayMethod },
+            apiPath        = path.takeIf { it != displayPath },
+            apiStatus      = status.takeIf { it != displayStatus },
         )
         SwingUtilities.invokeLater {
             tableModel.add(entry)
@@ -771,6 +767,9 @@ class ActivityLogTab(private val api: MontoyaApi) {
         if (e.sessionId != null) put("session_id", e.sessionId)
         if (e.host.isNotBlank()) put("host", e.host)
         if (e.targetUrl != null) put("target_url", e.targetUrl)
+        if (e.apiMethod != null) put("api_method", e.apiMethod)
+        if (e.apiPath != null) put("api_path", e.apiPath)
+        if (e.apiStatus != null) put("api_status", e.apiStatus)
     }.toString()
 
     private fun entryFromJson(json: String): LogEntry {
@@ -796,6 +795,9 @@ class ActivityLogTab(private val api: MontoyaApi) {
             host           = o["host"]?.jsonPrimitive?.contentOrNull ?: service?.host() ?: "",
             targetUrl      = o["target_url"]?.jsonPrimitive?.contentOrNull
                 ?: service?.let { urlOf(it, path) },
+            apiMethod      = o["api_method"]?.jsonPrimitive?.contentOrNull,
+            apiPath        = o["api_path"]?.jsonPrimitive?.contentOrNull,
+            apiStatus      = o["api_status"]?.jsonPrimitive?.intOrNull,
         )
     }
 

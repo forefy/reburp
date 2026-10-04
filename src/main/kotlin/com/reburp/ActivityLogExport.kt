@@ -42,6 +42,20 @@ data class ExportRow(
     ).mapNotNull { (title, body) -> body?.takeIf { it.isNotBlank() }?.let { title to it } }
 }
 
+/**
+ * The reburp API call itself, rendered as a raw HTTP request. A send call displays the
+ * target's method and path in the table, so the call's own are kept separately.
+ */
+fun apiRequestText(entry: LogEntry): String = buildString {
+    append("${entry.apiMethod ?: entry.method} ${entry.apiPath ?: entry.path} HTTP/1.1\r\n")
+    if (entry.requestHeaders.isNotBlank()) {
+        append(entry.requestHeaders)
+        if (!entry.requestHeaders.endsWith("\n")) append("\r\n")
+    }
+    append("\r\n")
+    if (entry.requestBody.isNotBlank()) append(entry.requestBody.trim())
+}
+
 // ── CSV ───────────────────────────────────────────────────────────────────────
 
 fun exportCsv(rows: List<ExportRow>, columns: List<LogColumn>): String = buildString {
