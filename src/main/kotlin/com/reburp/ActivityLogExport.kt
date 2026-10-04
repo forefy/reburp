@@ -15,6 +15,7 @@ enum class LogColumn(val title: String, val value: (LogEntry) -> String) {
     METHOD("Method", { it.method }),
     STATUS("Status", { if (it.status == 0) "" else it.status.toString() }),
     MS("ms",       { it.durationMs.toString() }),
+    HOST("Host",   { it.host }),
     PATH("Path",   { it.path }),
     NOTES("AI Notes", { it.notes }),
     SESSION("Session", { it.sessionId ?: "" }),

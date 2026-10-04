@@ -35,8 +35,8 @@ class ActivityLogExportTest {
         val csv = exportCsv(listOf(row(entry()), row(entry(id = 2, method = "POST"))), columns)
         val lines = csv.trim().split("\r\n")
         assertEquals(3, lines.size)
-        assertEquals("#,Time,Method,Status,ms,Path,AI Notes,Session", lines[0])
-        assertTrue(lines[1].startsWith("1,10:00:00.000,GET,200,12,/api/users/1"))
+        assertEquals("#,Time,Method,Status,ms,Host,Path,AI Notes,Session", lines[0])
+        assertTrue(lines[1].startsWith("1,10:00:00.000,GET,200,12,,/api/users/1"))
     }
 
     @Test
@@ -55,7 +55,7 @@ class ActivityLogExportTest {
     @Test
     fun `csv keeps an empty status for entries that never got a response`() {
         val csv = exportCsv(listOf(row(entry(status = 0))), columns)
-        assertTrue(csv.trim().split("\r\n")[1].contains("GET,,12,"), csv)
+        assertTrue(csv.trim().split("\r\n")[1].contains("GET,,12,,"), csv)
     }
 
     @Test
