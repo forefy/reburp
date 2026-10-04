@@ -372,7 +372,8 @@ class ActivityLogTab(private val api: MontoyaApi) {
 
     /** Fallback: derive the service from the request's own Host header. */
     private fun serviceFromHostHeader(raw: String, defaultHttps: Boolean): HttpService? {
-        val value = Regex("(?im)^Host:[ \\t]*(\\S+)[ \\t]*$").find(raw)?.groupValues?.get(1) ?: return null
+        val headers = raw.split(Regex("\\r?\\n\\r?\\n"), limit = 2)[0]
+        val value = Regex("(?im)^Host:[ \\t]*(\\S+)[ \\t]*$").find(headers)?.groupValues?.get(1) ?: return null
         val colon = value.lastIndexOf(':')
         val port  = if (colon > 0) value.substring(colon + 1).toIntOrNull() else null
         val host  = if (port != null) value.substring(0, colon) else value
@@ -387,7 +388,8 @@ class ActivityLogTab(private val api: MontoyaApi) {
     /** Columns in the order the table shows them, with the session id appended. */
     private fun exportColumns(): List<LogColumn> =
         (0 until table.columnModel.columnCount)
-            .map { LogColumn.entries[table.convertColumnIndexToModel(it)] } + LogColumn.SESSION
+            .mapNotNull { view -> LogColumn.entries.firstOrNull { it.title == table.getColumnName(view) } } +
+            LogColumn.SESSION
 
     /**
      * Rows the table currently shows: the active filter, in the active sort order.
@@ -427,6 +429,8 @@ class ActivityLogTab(private val api: MontoyaApi) {
         options.add(JLabel("HTML report contents"))
         options.add(Box.createVerticalStrut(4))
         options.add(includeApi)
+        options.add(Box.createVerticalStrut(8))
+        options.add(JLabel("Exports contain any cookies and tokens in the logged traffic."))
 
         val stamp    = LocalDateTime.now().format(EXPORT_STAMP_FMT)
         val htmlFilt = FileNameExtensionFilter("HTML report (*.html)", "html", "htm")
@@ -452,7 +456,7 @@ class ActivityLogTab(private val api: MontoyaApi) {
         val asCsv = chooser.fileFilter == csvFilt
         var file  = chooser.selectedFile
         val ext   = file.name.substringAfterLast('.', "").lowercase()
-        if (ext != (if (asCsv) "csv" else "html") && ext != "htm") {
+        if (if (asCsv) ext != "csv" else ext != "html" && ext != "htm") {
             file = File(file.parentFile, "${file.name}.${if (asCsv) "csv" else "html"}")
         }
         if (file.exists()) {
@@ -493,7 +497,7 @@ class ActivityLogTab(private val api: MontoyaApi) {
     // ── toolbar ───────────────────────────────────────────────────────────────
 
     private fun buildToolbar(): JPanel {
-        val countLbl = JLabel("0 calls")
+        val countLbl = JLabel("${tableModel.rowCount} calls")
         tableModel.addTableModelListener { countLbl.text = "${tableModel.rowCount} calls" }
 
         // Matching is literal and case insensitive: hosts are full of dots, and a dot that
@@ -514,10 +518,8 @@ class ActivityLogTab(private val api: MontoyaApi) {
         filterBodies.addActionListener { applyFilter() }
 
         filterInScope.toolTipText =
-            "Show only calls whose target URL is in Burp's configured scope. Re-checked each time this is switched on."
+            "Show only calls whose target URL is in Burp's configured scope. Re-checked each time the filter changes."
         filterInScope.addActionListener {
-            // Scope can be edited after the traffic was logged, so start from a clean slate.
-            scopeCache.clear()
             applyFilter()
         }
 
@@ -566,6 +568,7 @@ class ActivityLogTab(private val api: MontoyaApi) {
         val target     = FilterTarget.entries[filterTarget.selectedIndex.coerceIn(0, FilterTarget.entries.lastIndex)]
         val bodies     = filterBodies.isSelected
         val scopeOnly  = filterInScope.isSelected
+        scopeCache.clear()
 
         if (needle.isBlank() && !scopeOnly) {
             sorter.rowFilter = null
@@ -702,6 +705,7 @@ class ActivityLogTab(private val api: MontoyaApi) {
         requestHeaders: String, requestBody: String, responseBody: String,
         sessionId: String? = null,
         forcedNotes: String? = null,
+        target: HttpService? = null,
     ) {
         // For /api/http/send* endpoints, surface the target request details
         // instead of the reburp API call itself (which is always POST 200).
@@ -720,7 +724,7 @@ class ActivityLogTab(private val api: MontoyaApi) {
                 arrayOf(method, path, status, analyzeEntry(method, path, status, requestBody, responseBody))
             }
         }
-        val service = serviceOf(requestBody, responseBody)
+        val service = target ?: serviceOf(requestBody, responseBody)
         val entry = LogEntry(
             id             = counter.incrementAndGet(),
             timestamp      = LocalTime.now().format(fmt),
