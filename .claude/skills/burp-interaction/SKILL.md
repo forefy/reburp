@@ -15,7 +15,7 @@ Prefer these endpoints over describing manual clicks in the Burp UI.
    loaded - see **Install reburp** below and guide the user through it, then retry.
 2. Read the live contract instead of guessing endpoint shapes: `GET /openapi.json`, or open
    `http://127.0.0.1:9090/docs` for Swagger UI. Endpoint names below can drift; the spec is truth.
-3. See if you can interact with burp's native browser (a chromium browser on the local computer named Burp Browser)
+3. See if you can interact with burp's native browser (a chromium browser on the local computer named Burp Browser), or ask the user to open it for you then interact with it.
 
 ## Install reburp
 
