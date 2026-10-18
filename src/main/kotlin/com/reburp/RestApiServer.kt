@@ -151,6 +151,7 @@ class RestApiServer(private val api: MontoyaApi, val port: Int = 9090, private v
                 extensionDataRoutes(api)
                 messageRoutes(api)
                 eventsRoutes(api)
+                uiRoutes(api)
                 if (activityLog != null) logRoutes(api, activityLog)
             }
         }.start(wait = false)
