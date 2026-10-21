@@ -26,6 +26,13 @@ internal val skipLogAttr     = AttributeKey<Boolean>("reburpSkipLog")
 // Paths that are noise - skip logging them
 private val SKIP_PATHS = setOf("/docs", "/openapi.json", "/favicon.ico")
 
+/** Text-like response bodies are worth keeping in the activity log; images and archives are not. */
+private fun isTextual(type: ContentType?): Boolean =
+    type == null || type.contentType == "text" ||
+        type.match(ContentType.Application.Json) || type.match(ContentType.Application.Xml) ||
+        type.contentSubtype.endsWith("+json") || type.contentSubtype.endsWith("+xml") ||
+        type.match(ContentType.Application.FormUrlEncoded)
+
 class RestApiServer(private val api: MontoyaApi, val port: Int = 9090, private val activityLog: ActivityLogTab? = null) {
 
     private var engine: EmbeddedServer<*, *>? = null
@@ -68,12 +75,15 @@ class RestApiServer(private val api: MontoyaApi, val port: Int = 9090, private v
                 install(createApplicationPlugin("reburpRespCapture") {
                     onCallRespond { call ->
                         transformBody { body: Any ->
+                            // Only copy what the log will keep: nothing for calls that opt out
+                            // (screenshots), and no decoding of binary bodies such as PNGs.
+                            if (call.attributes.getOrNull(skipLogAttr) == true) return@transformBody body
                             val text = when (body) {
-                                is TextContent          -> body.text
-                                is ByteArrayContent     -> body.bytes().let { b ->
+                                is TextContent      -> body.text
+                                is ByteArrayContent -> if (isTextual(body.contentType)) body.bytes().let { b ->
                                     if (b.size <= 1_048_576) b.decodeToString() else b.decodeToString(0, 1_048_576)
-                                }
-                                else                    -> null
+                                } else null
+                                else                -> null
                             }
                             if (text != null) call.attributes.put(responseBodyAttr, text)
                             body
