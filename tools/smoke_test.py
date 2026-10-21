@@ -180,6 +180,19 @@ def history_fields_present(payload):
     return None
 
 
+
+def _git_head():
+    """Short commit of the source tree, or None outside a git checkout."""
+    import os
+    import subprocess
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    try:
+        out = subprocess.run(["git", "rev-parse", "--short", "HEAD"], capture_output=True,
+                             text=True, timeout=5, cwd=root)
+        return out.stdout.strip() or None
+    except Exception:
+        return None
+
 def _gradle_version():
     """The version in build.gradle.kts, which the build bakes into the extension."""
     import os
@@ -215,6 +228,13 @@ def main():
             verify=lambda p: None if p.get("extension_version") == _gradle_version()
             else f"running {p.get('extension_version')}, but the source tree is "
                  f"{_gradle_version()}: Burp is holding an older jar")
+    # The version is the same for every build of a branch, so it cannot tell a reload that
+    # took from one that did not. The build id names the commit the jar was built from.
+    head = _git_head()
+    if head:
+        c.check("runs a jar built from this checkout", "GET", "/api/status",
+                verify=lambda p: None if (p.get("build") or "").split(" ")[0].split("-")[0] == head
+                else f"running build {p.get('build')!r}, but HEAD is {head}: reload did not take")
 
     print("\nNumbers")
     c.check("hex to decimal", "POST", "/api/utils/number/convert",

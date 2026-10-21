@@ -31,6 +31,30 @@ Only needed when `GET /api/status` does not connect. Get the jar, then load it:
 Then in Burp: **Extensions -> Installed -> Add**, type **Java**, pick the jar, **Next**. It
 starts on port 9090 and adds a **reburp** tab. Re-check `GET /api/status` to confirm.
 
+## Reloading reburp after a rebuild
+
+Burp keeps the extension's threads alive until reburp's own stop completes, and it reloads on
+every jar write when the row's **Auto-reload** box is ticked. Both bit hard once: a reload
+during a long request hung the unload, and the rebuilds that followed stacked loads until
+Burp ran out of heap. So:
+
+1. Leave **Auto-reload unticked** on the reburp row while building. Build with
+   `./gradlew shadowJar`, then ask for one reload.
+2. Stop calling the API before the reload, and never reload while a request is in flight.
+3. Reload by **unticking and re-ticking Loaded** once (Ctrl-click did not reload in Burp 2026.9).
+4. Prove it took: `GET /api/status` must report a `build` whose commit matches
+   `git rev-parse --short HEAD` of the tree you built from (`-dirty` means uncommitted
+   changes were in). The version string alone is the same for every build of a branch.
+   Burp's **Extensions -> Output** pane shows the same line: `reburp <version> (<build>) listening`.
+5. `python3 tools/smoke_test.py` checks that build match as its second step and fails loudly
+   when Burp is holding an older jar.
+
+If the port answers nothing after a reload, or Loaded is ticked with an empty Output pane,
+the reload is wedged: `jcmd <burp pid> Thread.print` will show `RestApiServer.stop` awaiting
+or `ActivityLogTab.<init>` parsing. The only recovery is a full quit of Burp; confirm the
+process id changed before trusting the next load. Do not drive the Loaded checkbox through
+`/api/ui` to reload reburp itself: the unload stops the server mid-call.
+
 ## Capturing browser traffic
 
 Only when the task needs real proxied traffic. Confirm whatever you pick is working by watching

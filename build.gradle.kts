@@ -1,3 +1,7 @@
+import java.time.ZoneOffset
+import java.time.ZonedDateTime
+import java.time.format.DateTimeFormatter
+
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
 plugins {
@@ -59,10 +63,28 @@ tasks.jar {
 
 // The version is reported at startup and over /api/status. Generate it from the Gradle
 // version rather than keeping a copy in the source, so the two cannot drift apart.
+//
+// A build id (short commit, "-dirty" when the tree had uncommitted changes, and the build
+// time in UTC) goes next to it. A branch build carries the same version string as main, so
+// after a reload the version alone cannot say whether Burp picked up the new jar; the build
+// id can. Outside a git checkout the commit reads "unknown".
+fun gitOutput(vararg args: String): String = runCatching {
+    providers.exec {
+        commandLine("git", *args)
+        isIgnoreExitValue = true
+    }.standardOutput.asText.get().trim()
+}.getOrDefault("")
+
+val gitCommit = gitOutput("rev-parse", "--short", "HEAD").ifEmpty { "unknown" }
+val gitDirty = gitOutput("status", "--porcelain").isNotEmpty()
+val buildTime = ZonedDateTime.now(ZoneOffset.UTC).format(DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm'Z'"))
+val buildId = "$gitCommit${if (gitDirty) "-dirty" else ""} $buildTime"
+
 val generateVersionFile by tasks.registering {
     val outputDir = layout.buildDirectory.dir("generated/version")
     val versionString = project.version.toString()
     inputs.property("version", versionString)
+    inputs.property("build", buildId)
     outputs.dir(outputDir)
     doLast {
         val file = outputDir.get().asFile.resolve("com/reburp/Version.kt")
@@ -73,6 +95,9 @@ val generateVersionFile by tasks.registering {
 
             /** Generated from the Gradle version by the generateVersionFile task. Do not edit. */
             const val REBURP_VERSION: String = "$versionString"
+
+            /** Short commit (plus -dirty for uncommitted changes) and UTC build time. Do not edit. */
+            const val REBURP_BUILD: String = "$buildId"
             """.trimIndent() + "\n"
         )
     }
