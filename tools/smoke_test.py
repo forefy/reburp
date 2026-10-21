@@ -328,6 +328,14 @@ def main():
             tolerate=(503,), verify=lambda p: None
             if all("button" in e["type"].lower() for e in p.get("elements", []))
             else "a non-button slipped through the type filter")
+    # Burp's own widgets are obfuscated; `type` must still read as a Swing class so filters
+    # like type=label work, and something on screen must own a mouse listener.
+    c.check("elements report Swing base types and clickability", "GET",
+            "/api/ui/elements?limit=300", tolerate=(503,), verify=lambda p: None
+            if all(e["type"].startswith(("J", "Flat", "Basic", "Window", "Frame", "Dialog", "Panel", "Box"))
+                   or e.get("impl") is None for e in p.get("elements", []))
+            and any(e.get("clickable") for e in p.get("elements", []))
+            else "an element kept an obfuscated type, or nothing is clickable")
     c.check("elements of a missing window is a 404", "GET", "/api/ui/elements?window=w99",
             expect=404, tolerate=(503,))
     c.check("click needs a target", "POST", "/api/ui/click", {}, expect=400, tolerate=(503,))

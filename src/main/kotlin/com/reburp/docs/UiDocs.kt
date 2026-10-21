@@ -202,7 +202,7 @@ internal fun uiPaths(): String = """
       "post": {
         "tags": ["UI"],
         "summary": "Click any element by id, or a point in a window",
-        "description": "**[Montoya API]** Dispatches real mouse press, release and click events at the centre of the element `id`, or at (`x`, `y`) in window coordinates of `window`, to whichever component is deepest at that point. `button` may be left, middle or right; a right click raises the platform's popup trigger, so Burp's context menus (Send to Repeater, Add to scope, ...) open and their items can then be picked with `POST /api/ui/click-button` by label or listed with `GET /api/ui/elements`. `count` of 2 double-clicks. Because the events go through the component's own listeners, this reaches anything the user could click, including extension panels and dialogs.",
+        "description": "**[Montoya API]** Dispatches real mouse press, release and click events at the centre of the element `id`, or at (`x`, `y`) in window coordinates of `window`. As AWT does, the events go to the deepest component at that point unless it ignores mouse input, in which case they go to its nearest ancestor with mouse listeners; `matched` says which component received them. `button` may be left, middle or right; a right click raises the platform's popup trigger, so Burp's context menus (Send to Repeater, Add to scope, ...) open and their items can then be picked with `POST /api/ui/click-button` by label or listed with `GET /api/ui/elements`. `count` of 2 double-clicks. Because the events go through the component's own listeners, this reaches anything the user could click, including extension panels and dialogs.",
         "operationId": "uiClick",
         "x-api-source": "montoya",
         "requestBody": {
@@ -411,7 +411,7 @@ internal fun uiSchemas(): String = """
         "description": "One Swing component. Which optional fields are present depends on its kind.",
         "properties": {
           "id": { "type": "string", "description": "Stable path id, `w<window>:<child>/<child>/...`, for the click, type, select, key and screenshot calls." },
-          "type": { "type": "string", "description": "Swing class name, for example JButton, JCheckBox, JTextField, JComboBox, JTable, JTabbedPane, JMenuItem." },
+          "type": { "type": "string", "description": "Nearest standard Swing class name, for example JButton, JCheckBox, JTextField, JComboBox, JTable, JTabbedPane, JMenuItem, JLabel. Burp's own obfuscated classes resolve to their Swing ancestor; see `impl`." },
           "text": { "type": "string", "nullable": true, "description": "Visible text: a button or label caption, a text field's content (first 200 chars), the selected tab, item or value of a chooser." },
           "name": { "type": "string", "nullable": true, "description": "The component's programmatic name, when the author set one." },
           "tooltip": { "type": "string", "nullable": true },
@@ -422,7 +422,9 @@ internal fun uiSchemas(): String = """
           "items": { "type": "array", "nullable": true, "items": { "type": "string" }, "description": "For combo boxes and lists their entries (first 100), for tab bars the tab titles." },
           "selected": { "type": "integer", "nullable": true, "description": "Selected index for combo boxes, lists, tab bars, tables (row) and trees (row); -1 when nothing is selected." },
           "rows": { "type": "integer", "nullable": true, "description": "Row count for tables, lists and trees." },
-          "children": { "type": "integer", "description": "Number of direct child components." }
+          "children": { "type": "integer", "description": "Number of direct child components." },
+          "impl": { "type": "string", "nullable": true, "description": "The concrete class when it is not a standard Swing one. Burp's own widgets are obfuscated, so `type` names the nearest javax.swing ancestor (JLabel, JPanel) and `impl` carries the real name (Zmel)." },
+          "clickable": { "type": "boolean", "default": false, "description": "True when the element reacts to clicks itself: a button, or a component with mouse listeners. A click on a non-clickable element is retargeted to its nearest clickable ancestor, as AWT does." }
         }
       },
 
@@ -445,7 +447,8 @@ internal fun uiSchemas(): String = """
           "y": { "type": "integer", "nullable": true, "description": "Window y coordinate." },
           "window": { "type": "string", "nullable": true, "description": "Window id for `x`/`y`; defaults to `w0`." },
           "button": { "type": "string", "default": "left", "enum": ["left", "middle", "right"], "description": "Right raises the popup trigger, which opens context menus." },
-          "count": { "type": "integer", "default": 1, "minimum": 1, "maximum": 3, "description": "2 for a double-click." }
+          "count": { "type": "integer", "default": 1, "minimum": 1, "maximum": 3, "description": "2 for a double-click." },
+          "modifiers": { "type": "array", "items": { "type": "string", "enum": ["shift", "ctrl", "alt", "meta"] }, "default": [], "description": "Modifier keys held during the click, for example ctrl to reload an extension from its Loaded checkbox." }
         }
       },
 

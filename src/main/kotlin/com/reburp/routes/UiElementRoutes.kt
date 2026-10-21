@@ -57,7 +57,11 @@ data class UiElement(
     val items: List<String>? = null,
     val selected: Int? = null,
     val rows: Int? = null,
-    val children: Int
+    val children: Int,
+    /** The concrete class when it is not a standard Swing one (Burp's are obfuscated), e.g. `Zmel`. */
+    val impl: String? = null,
+    /** Whether this element reacts to mouse clicks itself: a button, or it has mouse listeners. */
+    val clickable: Boolean = false
 )
 
 @Serializable
@@ -70,7 +74,8 @@ data class UiClickRequest(
     val y: Int? = null,
     val window: String? = null,
     val button: String = "left",
-    val count: Int = 1
+    val count: Int = 1,
+    val modifiers: List<String> = emptyList()
 )
 
 @Serializable
@@ -115,10 +120,43 @@ internal fun boundsInWindow(c: Component, win: Window): Rectangle {
     return Rectangle(p.x, p.y, c.width, c.height)
 }
 
+private fun isStandard(k: Class<*>): Boolean {
+    val pkg = k.`package`?.name ?: return false
+    return pkg.startsWith("javax.swing") || pkg.startsWith("java.awt")
+}
+
+/** The nearest javax.swing / java.awt ancestor's name, so Burp's obfuscated `Zmel` reads as `JLabel`. */
 private fun typeName(c: Component): String {
     var k: Class<*> = c.javaClass
-    while (k.simpleName.isEmpty() || k.isAnonymousClass) k = k.superclass ?: break
+    while (!isStandard(k)) k = k.superclass ?: break
     return k.simpleName
+}
+
+/** The concrete class name when it is not itself a standard Swing class (and is not anonymous). */
+private fun implName(c: Component): String? {
+    var k: Class<*> = c.javaClass
+    while (k.simpleName.isEmpty() || k.isAnonymousClass) k = k.superclass ?: break
+    return k.simpleName.takeIf { !isStandard(k) }
+}
+
+private fun listensForMouse(c: Component): Boolean =
+    c is AbstractButton || c.mouseListeners.isNotEmpty() || c.mouseMotionListeners.isNotEmpty()
+
+/**
+ * What AWT itself would hand a mouse event to: the deepest component at the point, unless it
+ * ignores mouse input, in which case the nearest ancestor that listens. Custom widgets such as
+ * Burp's Send button are a label inside a panel, with the listener on one of the two; dispatching
+ * to the wrong one is a silent no-op. Returns the target and the point in its coordinates.
+ */
+internal fun retargetForClick(from: Component, p: Point, win: Window): Pair<Component, Point> {
+    var t = from
+    var pt = p
+    while (t !== win && !listensForMouse(t)) {
+        val parent = t.parent ?: break
+        pt = SwingUtilities.convertPoint(t, pt, parent)
+        t = parent
+    }
+    return if (t === win && !listensForMouse(t)) from to p else t to pt
 }
 
 private fun textOf(c: Component): String? = when (c) {
@@ -179,7 +217,9 @@ internal fun describe(c: Component, id: String, win: Window): UiElement {
         items = itemsOf(c),
         selected = selectedOf(c),
         rows = rowsOf(c),
-        children = (c as? Container)?.componentCount ?: 0
+        children = (c as? Container)?.componentCount ?: 0,
+        impl = implName(c),
+        clickable = listensForMouse(c)
     )
 }
 
@@ -188,7 +228,7 @@ internal fun describe(c: Component, id: String, win: Window): UiElement {
 private val popupOnPress = !System.getProperty("os.name", "").lowercase().contains("windows")
 
 /** Click `target` at a point in its own coordinates with real press/release/click events. */
-internal fun clickAt(target: Component, x: Int, y: Int, button: String, count: Int) {
+internal fun clickAt(target: Component, x: Int, y: Int, button: String, count: Int, extraMods: Int = 0) {
     val btn = when (button.lowercase()) {
         "left" -> MouseEvent.BUTTON1
         "middle" -> MouseEvent.BUTTON2
@@ -202,7 +242,7 @@ internal fun clickAt(target: Component, x: Int, y: Int, button: String, count: I
     }
     val popup = btn == MouseEvent.BUTTON3
     fun ev(id: Int, clicks: Int, mods: Int, trigger: Boolean) =
-        target.dispatchEvent(MouseEvent(target, id, System.currentTimeMillis(), mods, x, y, clicks, trigger, btn))
+        target.dispatchEvent(MouseEvent(target, id, System.currentTimeMillis(), mods or extraMods, x, y, clicks, trigger, btn))
     target.dispatchEvent(MouseEvent(target, MouseEvent.MOUSE_ENTERED, System.currentTimeMillis(), 0, x, y, 0, false))
     for (i in 1..count.coerceIn(1, 3)) {
         ev(MouseEvent.MOUSE_PRESSED, i, down, popup && popupOnPress)
@@ -327,28 +367,28 @@ fun Routing.uiElementRoutes(api: MontoyaApi) {
             runCatching {
                 onEdt {
                     val wins = showingWindows(frame)
-                    val (target, x, y) = when {
+                    val (deepest, at, win) = when {
                         req.id != null -> {
                             val c = resolveElement(req.id, wins)
                             if (!c.isShowing) throw UiBadTarget("Element ${req.id} is not showing")
                             val cx = c.width / 2
                             val cy = c.height / 2
-                            val deepest = (c as? Container)?.let { SwingUtilities.getDeepestComponentAt(it, cx, cy) } ?: c
-                            val p = SwingUtilities.convertPoint(c, Point(cx, cy), deepest)
-                            Triple(deepest, p.x, p.y)
+                            val d = (c as? Container)?.let { SwingUtilities.getDeepestComponentAt(it, cx, cy) } ?: c
+                            Triple(d, SwingUtilities.convertPoint(c, Point(cx, cy), d), SwingUtilities.getWindowAncestor(c) ?: frame)
                         }
                         req.x != null && req.y != null -> {
-                            val win = windowById(req.window ?: "w0", wins)
-                            val deepest = SwingUtilities.getDeepestComponentAt(win, req.x, req.y)
+                            val w = windowById(req.window ?: "w0", wins)
+                            val d = SwingUtilities.getDeepestComponentAt(w, req.x, req.y)
                                 ?: throw UiNotFound("Nothing at (${req.x}, ${req.y}) in ${req.window ?: "w0"}")
-                            val p = SwingUtilities.convertPoint(win, Point(req.x, req.y), deepest)
-                            Triple(deepest, p.x, p.y)
+                            Triple(d, SwingUtilities.convertPoint(w, Point(req.x, req.y), d), w)
                         }
                         else -> throw UiBadTarget("Give an element id, or x and y (window coordinates)")
                     }
-                    clickAt(target, x, y, req.button, req.count)
-                    val label = textOf(target)?.let { " '$it'" } ?: ""
-                    UiActionResponse(true, "Clicked", "${typeName(target)}$label")
+                    val (target, p) = retargetForClick(deepest, at, win)
+                    clickAt(target, p.x, p.y, req.button, req.count, modifierMask(req.modifiers))
+                    val label = (textOf(target) ?: textOf(deepest))?.let { " '$it'" } ?: ""
+                    val via = if (target !== deepest) " via ${implName(target) ?: typeName(target)}" else ""
+                    UiActionResponse(true, "Clicked", "${typeName(target)}$label$via")
                 }
             }.onSuccess { call.respond(it) }.onFailure { call.failFrom(it) }
         }
