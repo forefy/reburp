@@ -46,6 +46,32 @@ class Client:
         except Exception as err:  # connection refused, timeout, etc.
             return None, {"error": str(err)}
 
+    def check_png(self, name, path):
+        """GET an endpoint that answers an image and verify it really is a PNG."""
+        req = urllib.request.Request(self.base + path, method="GET")
+        try:
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                raw = resp.read()
+                status, ctype = resp.status, resp.headers.get("Content-Type", "")
+        except urllib.error.HTTPError as err:
+            if err.code == 503:
+                self.record(name, SKIP, "HTTP 503: no Burp window (headless?)")
+                return None
+            self.record(name, FAIL, f"HTTP {err.code}: {err.read()[:120]!r}")
+            return None
+        except Exception as err:
+            self.record(name, FAIL, f"no response: {err}")
+            return None
+        if status != 200:
+            self.record(name, FAIL, f"HTTP {status} (wanted 200)")
+        elif not ctype.startswith("image/png"):
+            self.record(name, FAIL, f"Content-Type {ctype!r}, wanted image/png")
+        elif raw[:8] != b"\x89PNG\r\n\x1a\n":
+            self.record(name, FAIL, f"body does not start with the PNG signature: {raw[:8]!r}")
+        else:
+            self.record(name, PASS, f"{len(raw)} bytes of PNG")
+        return raw
+
     def check(self, name, method, path, body=None, expect=200, verify=None,
               tolerate=()):
         """Run one endpoint. `tolerate` lists status codes that count as a skip."""
@@ -248,6 +274,34 @@ def main():
             {"limit": 1, "max_scored": 0}, expect=400,
             verify=lambda p: None if "max_scored" in (p or {}).get("error", "")
             else f"unhelpful error: {p}")
+
+    print("\nUI")
+    # /api/ui drives Burp's Swing window from inside the JVM. With no window (headless CI)
+    # every call answers 503, which these checks treat as a skip rather than a failure.
+    tabs = c.check("list tabs", "GET", "/api/ui/tabs", tolerate=(503,),
+                   verify=lambda p: None if p.get("tabs") and 0 <= p.get("selected", -1) < len(p["tabs"])
+                   else f"no tabs or selected out of range: {p}")
+    if tabs:
+        # Re-select the tab that is already open, so the user's view is not disturbed
+        # while still exercising name matching and the selected index round trip.
+        current = tabs["selected_title"]
+        c.check("select the current tab by name", "POST", "/api/ui/select-tab",
+                {"name": current}, verify=lambda p: None if p.get("matched") == current
+                else f"matched {p.get('matched')!r}, wanted {current!r}")
+        c.check("select-tab by index agrees with tabs", "POST", "/api/ui/select-tab",
+                {"index": tabs["selected"]}, verify=lambda p: None if p.get("matched") == current
+                else f"index {tabs['selected']} matched {p.get('matched')!r}")
+    c.check("unknown tab is a 404", "POST", "/api/ui/select-tab",
+            {"name": "no-such-tab-zzz"}, expect=404, tolerate=(503,),
+            verify=lambda p: None if "No tab matches" in (p or {}).get("error", "")
+            else f"unhelpful error: {p}")
+    c.check("unknown button is a 404", "POST", "/api/ui/click-button",
+            {"text": "no-such-button-zzz"}, expect=404, tolerate=(503,))
+    c.check("out-of-range row is a 404", "POST", "/api/ui/select-row",
+            {"index": 10_000_000}, expect=404, tolerate=(503,))
+    c.check("select-row needs index or last", "POST", "/api/ui/select-row", {},
+            expect=404, tolerate=(503,))
+    c.check_png("screenshot", "/api/ui/screenshot")
 
     print("\nShell (expected off)")
     c.check("shell status", "GET", "/api/utils/shell/status",

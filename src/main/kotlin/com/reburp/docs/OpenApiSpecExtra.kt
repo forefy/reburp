@@ -35,7 +35,8 @@ internal fun extraTags(): String = joinFragments(
         // Declared here rather than in OpenApiSpec.kt's own tag list, which omitted it even
         // though its WebSocket operations were already tagged with it.
         """{ "name": "WebSocket Client", "description": "Outbound WebSocket connections opened by this extension" }""",
-        """{ "name": "Request Engine", "description": "High-throughput async request execution engine (Burp 2026.x http.execution)" }"""
+        """{ "name": "Request Engine", "description": "High-throughput async request execution engine (Burp 2026.x http.execution)" }""",
+        """{ "name": "UI",           "description": "Screenshot and drive Burp's own window from inside the JVM" }"""
     )
 )
 
@@ -51,6 +52,7 @@ internal fun extraPaths(): String = joinFragments(
         messagePaths(),
         eventsPaths(),
         requestEnginePaths(),
+        uiPaths(),
         undocumentedPaths()
     )
 )
@@ -63,6 +65,7 @@ internal fun extraSchemas(): String = joinFragments(
         messageSchemas(),
         eventsSchemas(),
         requestEngineSchemas(),
+        uiSchemas(),
         undocumentedSchemas()
     )
 )
