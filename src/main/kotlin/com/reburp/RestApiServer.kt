@@ -70,7 +70,9 @@ class RestApiServer(private val api: MontoyaApi, val port: Int = 9090, private v
                         transformBody { body: Any ->
                             val text = when (body) {
                                 is TextContent          -> body.text
-                                is ByteArrayContent     -> body.bytes().decodeToString()
+                                is ByteArrayContent     -> body.bytes().let { b ->
+                                    if (b.size <= 1_048_576) b.decodeToString() else b.decodeToString(0, 1_048_576)
+                                }
                                 else                    -> null
                             }
                             if (text != null) call.attributes.put(responseBodyAttr, text)
@@ -159,9 +161,16 @@ class RestApiServer(private val api: MontoyaApi, val port: Int = 9090, private v
     }
 
     fun stop() {
-        // Bounded shutdown so unloading the extension never hangs Burp, and null the engine
-        // so a repeated stop is a no-op.
-        runCatching { engine?.stop(1_000, 5_000) }
+        // Bounded shutdown so unloading the extension never hangs Burp, and null the engine so a
+        // repeated stop is a no-op. Ktor's stop() awaits the Netty event loops with no timeout of
+        // its own, and a loop whose thread is still inside a long handler (a huge response being
+        // serialised) never finishes - that wedged Burp's reload for good once. So run it on a
+        // helper thread and wait a bounded time; the listening socket is closed first either way,
+        // and a leaked loop dies with its handler.
+        val e = engine ?: return
         engine = null
+        val worker = Thread({ runCatching { e.stop(500, 2_000) } }, "reburp-stop").apply { isDaemon = true }
+        worker.start()
+        worker.join(5_000)
     }
 }

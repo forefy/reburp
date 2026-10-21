@@ -31,6 +31,7 @@ fun Routing.proxyRoutes(api: MontoyaApi) {
             val offset      = p["offset"]?.toIntOrNull() ?: 0
             val limit       = (p["limit"]?.toIntOrNull() ?: 100).coerceIn(1, 1000)
             val includeBody = p["include_body"]?.toBooleanStrictOrNull() ?: false
+            val maxBody     = p["max_body"]?.toIntOrNull() ?: DEFAULT_MAX_BODY
             val host        = p["host"]
             val method      = p["method"]?.uppercase()
             val mimeType    = p["mime_type"]?.uppercase()
@@ -52,7 +53,7 @@ fun Routing.proxyRoutes(api: MontoyaApi) {
             if (scopeOnly)           items = items.filter { e -> runCatching { api.scope().isInScope(e.url()) }.recoverCatching { api.scope().isInScope(e.request().url()) }.getOrElse { false } }
             if (listenerPort != null) items = items.filter { runCatching { it.listenerPort() == listenerPort }.getOrElse { false } }
 
-            call.respond(items.drop(offset).take(limit).map { it.toProxyEntryDto(includeBody) })
+            call.respond(items.drop(offset).take(limit).map { it.toProxyEntryDto(includeBody, maxBody) })
         }
 
         // Full-text regex search across request + response bytes
@@ -61,10 +62,11 @@ fun Routing.proxyRoutes(api: MontoyaApi) {
             val offset = call.request.queryParameters["offset"]?.toIntOrNull() ?: 0
             val limit  = (call.request.queryParameters["limit"]?.toIntOrNull() ?: 100).coerceIn(1, 500)
             val includeBody = call.request.queryParameters["include_body"]?.toBooleanStrictOrNull() ?: false
+            val maxBody = call.request.queryParameters["max_body"]?.toIntOrNull() ?: DEFAULT_MAX_BODY
             runCatching {
                 val pattern = Pattern.compile(regex)
                 val items = api.proxy().history { it.contains(pattern) }
-                    .drop(offset).take(limit).map { it.toProxyEntryDto(includeBody) }
+                    .drop(offset).take(limit).map { it.toProxyEntryDto(includeBody, maxBody) }
                 call.respond(items)
             }.onFailure { call.respond(HttpStatusCode.BadRequest, ErrorResponse("Invalid regex: ${it.message}")) }
         }
