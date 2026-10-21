@@ -68,6 +68,14 @@ skip desktop screenshots and use `/api/ui`: `select-tab`, then `select-row` with
 then `screenshot`. It paints Burp's window from inside the JVM, so it works even when Burp is
 minimized, and Java/Swing does not block it the way it blocks OS-level accessibility.
 
+For anything the purpose-built calls do not name (an extension's form, a combo box, a right-click
+menu, a confirmation dialog): `GET /api/ui/elements?text=<label>` to get the element's `id`, then
+`POST /api/ui/click` with that id (`"button": "right"` opens its context menu; list again to see the
+menu items, or `click-button` one by label), `POST /api/ui/type` for text fields, `POST /api/ui/select`
+with `text` or `index` for combo boxes, lists, tables and trees, and `POST /api/ui/key` (e.g. `ESCAPE`,
+`ENTER`) for dialogs. Ids are paths in the live layout, so re-list after switching tabs or opening a
+dialog, and check `GET /api/ui/windows` when a dialog appears: it is `w1`, not part of `w0`.
+
 ## Common tasks -> endpoints
 
 | Goal | Call |
@@ -84,7 +92,8 @@ minimized, and Java/Swing does not block it the way it blocks OS-level accessibi
 | Rank history by how anomalous it looks | `POST /api/utils/rank` (body: `limit`, `offset`, `max_scored`, `scope_only`, `host`) |
 | Send request to Repeater / Intruder | `POST /api/repeater/send`, `POST /api/intruder/send` |
 | See the Burp window | `GET /api/ui/screenshot` (PNG; works while minimized or on another desktop) |
-| Switch tab, click a button, pick a row | `GET /api/ui/tabs`, `POST /api/ui/select-tab`, `POST /api/ui/click-button`, `POST /api/ui/select-row` |
+| Switch tab (Burp's or an extension's sub-tab), click a button, pick a row | `GET /api/ui/tabs` (`nested` lists sub-tabs), `POST /api/ui/select-tab`, `POST /api/ui/click-button`, `POST /api/ui/select-row` |
+| Drive any other element: combo, text field, list, tree, dialog, context menu | `GET /api/ui/elements?text=...` for ids, then `POST /api/ui/click`, `/type`, `/select`, `/key`; `GET /api/ui/windows` for dialogs and popups |
 
 ## Conventions
 
