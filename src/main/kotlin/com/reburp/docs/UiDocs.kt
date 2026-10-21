@@ -292,7 +292,7 @@ internal fun uiPaths(): String = """
       "post": {
         "tags": ["UI"],
         "summary": "Send a key press to an element, or to whatever has focus",
-        "description": "**[Montoya API]** Dispatches key pressed, typed and released events for `key`, named as in `java.awt.event.KeyEvent` without the `VK_` prefix (ENTER, TAB, ESCAPE, DELETE, F5, a single letter or digit) with optional `modifiers` (shift, ctrl, alt, meta). Goes to the element `id` when given, otherwise to the current focus owner. Useful for confirming or dismissing dialogs and for shortcuts such as meta+R.",
+        "description": "**[Montoya API]** Dispatches key pressed, typed and released events for `key`, named as in `java.awt.event.KeyEvent` without the `VK_` prefix (ENTER, TAB, ESCAPE, DELETE, F5, a single letter or digit) with optional `modifiers` (shift, ctrl, alt, meta). Goes to the element `id` when given, otherwise to the current focus owner; a target that is not showing is refused with 400, since AWT would drop its keys silently. Useful for confirming or dismissing dialogs and for shortcuts such as meta+R.",
         "operationId": "uiKey",
         "x-api-source": "montoya",
         "requestBody": {

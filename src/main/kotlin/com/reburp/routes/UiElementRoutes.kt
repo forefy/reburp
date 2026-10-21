@@ -95,12 +95,12 @@ data class UiKeyRequest(val key: String, val id: String? = null, val modifiers: 
 internal fun showingWindows(frame: Frame): List<Window> =
     listOf<Window>(frame) + Window.getWindows().filter { it !== frame && it.isShowing }
 
-internal fun windowById(id: String, windows: List<Window>): Window {
+internal fun windowById(id: String, windows: List<Container>): Container {
     val idx = id.removePrefix("w").toIntOrNull() ?: throw UiBadTarget("Bad window id '$id', expected w<n>")
     return windows.getOrNull(idx) ?: throw UiNotFound("No showing window $id (have w0..w${windows.size - 1})")
 }
 
-internal fun resolveElement(id: String, windows: List<Window>): Component {
+internal fun resolveElement(id: String, windows: List<Container>): Component {
     val colon = id.indexOf(':')
     if (colon < 0) throw UiBadTarget("Bad element id '$id', expected w<n>:<path>")
     var c: Component = windowById(id.substring(0, colon), windows)
@@ -114,9 +114,9 @@ internal fun resolveElement(id: String, windows: List<Window>): Component {
     return c
 }
 
-internal fun boundsInWindow(c: Component, win: Window): Rectangle {
-    if (c === win) return Rectangle(0, 0, win.width, win.height)
-    val p = SwingUtilities.convertPoint(c, Point(0, 0), win)
+internal fun boundsInWindow(c: Component, root: Container): Rectangle {
+    if (c === root) return Rectangle(0, 0, root.width, root.height)
+    val p = SwingUtilities.convertPoint(c, Point(0, 0), root)
     return Rectangle(p.x, p.y, c.width, c.height)
 }
 
@@ -148,15 +148,15 @@ private fun listensForMouse(c: Component): Boolean =
  * Burp's Send button are a label inside a panel, with the listener on one of the two; dispatching
  * to the wrong one is a silent no-op. Returns the target and the point in its coordinates.
  */
-internal fun retargetForClick(from: Component, p: Point, win: Window): Pair<Component, Point> {
+internal fun retargetForClick(from: Component, p: Point, root: Container): Pair<Component, Point> {
     var t = from
     var pt = p
-    while (t !== win && !listensForMouse(t)) {
+    while (t !== root && !listensForMouse(t)) {
         val parent = t.parent ?: break
         pt = SwingUtilities.convertPoint(t, pt, parent)
         t = parent
     }
-    return if (t === win && !listensForMouse(t)) from to p else t to pt
+    return if (t === root && !listensForMouse(t)) from to p else t to pt
 }
 
 private fun textOf(c: Component): String? = when (c) {
@@ -202,8 +202,8 @@ private fun interesting(c: Component): Boolean = when (c) {
     else -> false
 }
 
-internal fun describe(c: Component, id: String, win: Window): UiElement {
-    val r = boundsInWindow(c, win)
+internal fun describe(c: Component, id: String, root: Container): UiElement {
+    val r = boundsInWindow(c, root)
     return UiElement(
         id = id,
         type = typeName(c),
@@ -251,14 +251,14 @@ internal fun clickAt(target: Component, x: Int, y: Int, button: String, count: I
     }
 }
 
-private fun keyCode(name: String): Int {
+internal fun keyCode(name: String): Int {
     val n = name.trim().uppercase().replace(' ', '_')
     if (n.length == 1 && n[0].isLetterOrDigit()) return KeyEvent.getExtendedKeyCodeForChar(n[0].code)
     return runCatching { KeyEvent::class.java.getField("VK_$n").getInt(null) }
         .getOrElse { throw UiBadTarget("Unknown key '$name'; use a java.awt.event.KeyEvent VK_ name such as ENTER, TAB, ESCAPE, F5") }
 }
 
-private fun modifierMask(names: List<String>): Int = names.fold(0) { acc, m ->
+internal fun modifierMask(names: List<String>): Int = names.fold(0) { acc, m ->
     acc or when (m.lowercase()) {
         "shift" -> InputEvent.SHIFT_DOWN_MASK
         "ctrl", "control" -> InputEvent.CTRL_DOWN_MASK
@@ -483,6 +483,8 @@ fun Routing.uiElementRoutes(api: MontoyaApi) {
                         req.id != null -> resolveElement(req.id, showingWindows(frame))
                         else -> KeyboardFocusManager.getCurrentKeyboardFocusManager().focusOwner ?: frame
                     }
+                    // AWT's focus manager drops key events for anything not showing, silently.
+                    if (!target.isShowing) throw UiBadTarget("Element ${req.id ?: "(focus owner)"} is not showing, so it cannot take keys")
                     if (target !== frame && target.isFocusable) target.requestFocusInWindow()
                     pressKey(target, req.key, req.modifiers)
                     UiActionResponse(true, "Pressed key", (req.modifiers + req.key.uppercase()).joinToString("+"))
