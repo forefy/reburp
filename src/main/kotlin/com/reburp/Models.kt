@@ -20,6 +20,8 @@ data class StatusResponse(
     val extension: String,
     /** reburp's own version. The `version` field below is Burp's. */
     val extension_version: String,
+    /** Short commit (plus -dirty for uncommitted changes) and UTC build time of the running jar. */
+    val build: String,
     val version: String,
     val edition: String,
     val port: Int,

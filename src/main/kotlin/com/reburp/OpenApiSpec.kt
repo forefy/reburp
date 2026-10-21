@@ -3245,6 +3245,7 @@ ${extraPaths()}
         "properties": {
           "extension":         { "type": "string",  "description": "Extension name, always \"reburp\"" },
           "extension_version": { "type": "string",  "description": "reburp's own version, e.g. 1.1.2" },
+          "build":             { "type": "string",  "description": "Build id of the running jar: short commit, -dirty when built from uncommitted changes, and UTC build time, e.g. \"8aff0eb-dirty 2026-10-21T11:20Z\". Compare it after a reload to be sure Burp picked up the new jar; the version alone is the same for every build of a branch." },
           "version":           { "type": "string",  "description": "Burp's version string, e.g. \"Burp Suite Professional\". This is Burp's version, not reburp's." },
           "edition":           { "type": "string",  "description": "Burp edition: COMMUNITY, PROFESSIONAL, or ENTERPRISE" },
           "port":              { "type": "integer", "description": "Port this REST server is listening on" },

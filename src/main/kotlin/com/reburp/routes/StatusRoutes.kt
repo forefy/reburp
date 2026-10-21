@@ -1,6 +1,7 @@
 package com.reburp.routes
 
 import burp.api.montoya.MontoyaApi
+import com.reburp.REBURP_BUILD
 import com.reburp.REBURP_VERSION
 import com.reburp.StatusResponse
 import io.ktor.http.*
@@ -14,6 +15,7 @@ fun Routing.statusRoutes(api: MontoyaApi, port: Int) {
             StatusResponse(
                 extension = "reburp",
                 extension_version = REBURP_VERSION,
+                build = REBURP_BUILD,
                 version = version.name(),
                 edition = version.edition().name,
                 port = port,

@@ -45,11 +45,11 @@ class BurpRestApiExtension : BurpExtension {
                     }
                 }.getOrNull()
                 if (holder != null)
-                    "reburp $REBURP_VERSION could not start: port $port is already served by reburp " +
+                    "reburp $REBURP_VERSION ($REBURP_BUILD) could not start: port $port is already served by reburp " +
                         "$holder, which is still loaded. Unload that extension in Burp's Extensions tab " +
                         "(untick it) and load this build again, otherwise Burp keeps answering with $holder."
                 else
-                    "reburp $REBURP_VERSION could not start: port $port is already in use. Close whatever " +
+                    "reburp $REBURP_VERSION ($REBURP_BUILD) could not start: port $port is already in use. Close whatever " +
                         "holds it (often another Burp instance with reburp loaded), then reload the extension."
             } else {
                 "reburp failed to start: ${e.message ?: e.javaClass.simpleName}"
@@ -59,7 +59,7 @@ class BurpRestApiExtension : BurpExtension {
             return
         }
 
-        api.logging().logToOutput("reburp $REBURP_VERSION listening on http://127.0.0.1:$port")
+        api.logging().logToOutput("reburp $REBURP_VERSION ($REBURP_BUILD) listening on http://127.0.0.1:$port")
         api.logging().logToOutput("API docs:              http://127.0.0.1:$port/docs")
 
         api.extension().registerUnloadingHandler {
