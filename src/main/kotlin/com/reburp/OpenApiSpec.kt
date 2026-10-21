@@ -3228,6 +3228,10 @@ ${extraPaths()}
       "InternalServerError": {
         "description": "Internal error - the operation reached Burp but failed while executing",
         "content": { "application/json": { "schema": { "${'$'}ref": "#/components/schemas/ErrorResponse" } } }
+      },
+      "UiUnavailable": {
+        "description": "Burp's suite window is not available yet, for example while Burp is still starting or running headless",
+        "content": { "application/json": { "schema": { "${'$'}ref": "#/components/schemas/ErrorResponse" } } }
       }
     },
 

@@ -63,6 +63,11 @@ You **cannot**, in any browser: install extensions (the Chrome Web Store blocks 
 trust Burp's CA (needs the user's password), or click/type via desktop control (browsers are
 read-only there). Don't burn turns on these - go to the fallback instead.
 
+When you do need to *see* Burp (confirm a Collaborator hit, show the user a Repeater result),
+skip desktop screenshots and use `/api/ui`: `select-tab`, then `select-row` with `{"last": true}`,
+then `screenshot`. It paints Burp's window from inside the JVM, so it works even when Burp is
+minimized, and Java/Swing does not block it the way it blocks OS-level accessibility.
+
 ## Common tasks -> endpoints
 
 | Goal | Call |
@@ -78,6 +83,8 @@ read-only there). Don't burn turns on these - go to the fallback instead.
 | Encode / decode / hash / JWT | `POST /api/utils/...` |
 | Rank history by how anomalous it looks | `POST /api/utils/rank` (body: `limit`, `offset`, `max_scored`, `scope_only`, `host`) |
 | Send request to Repeater / Intruder | `POST /api/repeater/send`, `POST /api/intruder/send` |
+| See the Burp window | `GET /api/ui/screenshot` (PNG; works while minimized or on another desktop) |
+| Switch tab, click a button, pick a row | `GET /api/ui/tabs`, `POST /api/ui/select-tab`, `POST /api/ui/click-button`, `POST /api/ui/select-row` |
 
 ## Conventions
 
