@@ -56,7 +56,7 @@ Burp features your agent can now drive over REST:
 - **Engagement tools** - generate a CSRF PoC, discover content, find references, send to decoder
 - **Access-control testing** - replay a request with and without its token and diff the responses, Autorize-style (BOLA/BFLA)
 - **BChecks & Bambda** - import custom scan rules, build filter chains, raise custom issues
-- **The Burp window itself** - screenshot it, switch tabs, click buttons and select table rows over REST, with no OS accessibility or screen capture needed
+- **The Burp window itself** - screenshot it, switch tabs (including extension sub-tabs), and click, type into or select any visible element, context menu or dialog over REST, with no OS accessibility or screen capture needed
 
 ## Install
 
@@ -164,7 +164,7 @@ The spec is the source of truth for request and response shapes.
 | Activity Log | `/api/log/` | Query reburp's own persisted call log |
 | AI | `/api/ai/` | Burp AI status and chat (where available) |
 | Meta | `/api/meta/` | Burp version components, extension load info, enum vocabularies |
-| UI | `/api/ui/` | Screenshot the Burp window, list and switch tabs, click buttons, select table rows |
+| UI | `/api/ui/` | Screenshot windows or elements, list and switch tabs (nested too), inventory every visible element, click, type, select and send keys |
 | Utilities | `/api/utils/` | URL encode/decode, base64, hash, JWT decode, random string, decompress |
 | Numbers | `/api/utils/number/` | Convert between binary, octal, decimal, hex and arbitrary radixes |
 | JSON | `/api/utils/json/` | Validate, read and edit by pointer, inspect structure, normalise |

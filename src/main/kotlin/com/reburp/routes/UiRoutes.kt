@@ -4,6 +4,7 @@ import burp.api.montoya.MontoyaApi
 import com.reburp.ErrorResponse
 import com.reburp.skipLogAttr
 import io.ktor.http.*
+import io.ktor.server.application.*
 import io.ktor.server.request.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
@@ -20,7 +21,16 @@ import javax.swing.JTable
 import javax.swing.SwingUtilities
 
 @Serializable
-data class UiTabsResponse(val tabs: List<String>, val selected: Int, val selected_title: String?)
+data class UiTabGroup(val tabs: List<String>, val selected: Int, val selected_title: String?)
+
+@Serializable
+data class UiTabsResponse(
+    val tabs: List<String>,
+    val selected: Int,
+    val selected_title: String?,
+    /** Tab bars nested inside the open tab, e.g. an extension's own sub-tabs, in tree order. */
+    val nested: List<UiTabGroup> = emptyList()
+)
 
 @Serializable
 data class UiSelectTabRequest(val name: String? = null, val index: Int? = null)
@@ -35,7 +45,39 @@ data class UiSelectRowRequest(val index: Int? = null, val last: Boolean = false)
 data class UiActionResponse(val ok: Boolean, val message: String, val matched: String? = null)
 
 /** Raised inside an EDT block when a requested element isn't present; mapped to 404. */
-private class UiNotFound(message: String) : RuntimeException(message)
+internal class UiNotFound(message: String) : RuntimeException(message)
+
+/** Raised inside an EDT block when the element exists but cannot take the requested action; mapped to 400. */
+internal class UiBadTarget(message: String) : RuntimeException(message)
+
+internal fun suiteFrame(api: MontoyaApi): Frame? =
+    runCatching { api.userInterface().swingUtils().suiteFrame() }.getOrNull()
+
+/** Depth-first walk of the Swing hierarchy. */
+internal fun walkTree(c: Component): Sequence<Component> = sequence {
+    yield(c)
+    if (c is Container) for (child in c.components) yieldAll(walkTree(child))
+}
+
+/**
+ * Run a block on the Event Dispatch Thread and return its result. Ktor handlers run on Netty
+ * threads, never the EDT, so invokeAndWait is safe and keeps Swing single-threaded. Do not call
+ * ktor's suspend `respond` inside here - compute a value and respond after.
+ */
+internal fun <T> onEdt(block: () -> T): T {
+    var result: Result<T>? = null
+    SwingUtilities.invokeAndWait { result = runCatching(block) }
+    return result!!.getOrThrow()
+}
+
+internal suspend fun ApplicationCall.failFrom(e: Throwable) {
+    val code = when (e) {
+        is UiNotFound -> HttpStatusCode.NotFound
+        is UiBadTarget -> HttpStatusCode.BadRequest
+        else -> HttpStatusCode.InternalServerError
+    }
+    respond(code, ErrorResponse(e.message ?: "Error"))
+}
 
 /**
  * Drive Burp's own Swing UI from inside the JVM - no OS accessibility, no synthetic input, works
@@ -45,13 +87,8 @@ private class UiNotFound(message: String) : RuntimeException(message)
  */
 fun Routing.uiRoutes(api: MontoyaApi) {
 
-    fun suiteFrame(): Frame? = runCatching { api.userInterface().swingUtils().suiteFrame() }.getOrNull()
-
-    // Depth-first walk of the Swing hierarchy.
-    fun walk(c: Component): Sequence<Component> = sequence {
-        yield(c)
-        if (c is Container) for (child in c.components) yieldAll(walk(child))
-    }
+    fun suiteFrame(): Frame? = suiteFrame(api)
+    fun walk(c: Component): Sequence<Component> = walkTree(c)
 
     // Burp's main tab bar is the JTabbedPane that carries a "Dashboard" tab; fall back to the
     // largest tabbed pane so this still answers if that title ever changes.
@@ -62,43 +99,55 @@ fun Routing.uiRoutes(api: MontoyaApi) {
         } ?: panes.maxByOrNull { it.tabCount }
     }
 
-    // Run a block on the Event Dispatch Thread and return its result. Ktor handlers run on Netty
-    // threads, never the EDT, so invokeAndWait is safe and keeps Swing single-threaded. Note: do
-    // not call ktor's suspend `respond` inside here - compute a value and respond after.
-    fun <T> onEdt(block: () -> T): T {
-        var result: Result<T>? = null
-        SwingUtilities.invokeAndWait { result = runCatching(block) }
-        return result!!.getOrThrow()
-    }
+    // Tab bars other than the main one that are currently showing: an extension's own sub-tabs,
+    // Repeater's request tabs, and so on. Hidden panes (inside unselected tabs) are skipped so a
+    // name only resolves against what the user can see.
+    fun nestedTabbedPanes(frame: Frame, main: JTabbedPane?): List<JTabbedPane> =
+        walk(frame).filterIsInstance<JTabbedPane>().filter { it !== main && it.isShowing && it.tabCount > 0 }.toList()
 
-    suspend fun io.ktor.server.application.ApplicationCall.failFrom(e: Throwable) {
-        val code = if (e is UiNotFound) HttpStatusCode.NotFound else HttpStatusCode.InternalServerError
-        respond(code, ErrorResponse(e.message ?: "Error"))
-    }
+    fun JTabbedPane.titles(): List<String> = (0 until tabCount).map { getTitleAt(it) }
+
+    fun JTabbedPane.indexOfTitle(name: String): Int =
+        (0 until tabCount).firstOrNull { getTitleAt(it).contains(name, ignoreCase = true) } ?: -1
 
     route("/api/ui") {
 
         // ── Screenshot the whole Burp window (PNG) ────────────────────────────
+        // `window` picks another showing window (a dialog or popup, ids from /api/ui/windows);
+        // `id` crops to one element (ids from /api/ui/elements).
         get("/screenshot") {
             call.attributes.put(skipLogAttr, true) // don't log raw PNG bytes into the activity log
             val frame = suiteFrame()
                 ?: return@get call.respond(HttpStatusCode.ServiceUnavailable, ErrorResponse("Burp UI frame not available"))
+            val windowId = call.request.queryParameters["window"]
+            val elementId = call.request.queryParameters["id"]
             runCatching {
-                val w = frame.width.coerceAtLeast(1)
-                val h = frame.height.coerceAtLeast(1)
-                val img = BufferedImage(w, h, BufferedImage.TYPE_INT_RGB)
                 onEdt {
+                    val wins = showingWindows(frame)
+                    val target: Component = when {
+                        elementId != null -> resolveElement(elementId, wins)
+                        windowId != null -> windowById(windowId, wins)
+                        else -> frame
+                    }
+                    val win = SwingUtilities.getWindowAncestor(target) ?: target as? java.awt.Window ?: frame
+                    val img = BufferedImage(win.width.coerceAtLeast(1), win.height.coerceAtLeast(1), BufferedImage.TYPE_INT_RGB)
                     val g = img.createGraphics()
                     // printAll renders the live component hierarchy off-screen, so it works even
                     // when the window is minimized, occluded, or on another macOS Space.
-                    frame.printAll(g)
+                    win.printAll(g)
                     g.dispose()
+                    val out = if (target === win) img else {
+                        val r = boundsInWindow(target, win)
+                        val x = r.x.coerceIn(0, img.width - 1)
+                        val y = r.y.coerceIn(0, img.height - 1)
+                        img.getSubimage(x, y, r.width.coerceIn(1, img.width - x), r.height.coerceIn(1, img.height - y))
+                    }
+                    val baos = ByteArrayOutputStream()
+                    ImageIO.write(out, "png", baos)
+                    baos.toByteArray()
                 }
-                val baos = ByteArrayOutputStream()
-                ImageIO.write(img, "png", baos)
-                baos.toByteArray()
             }.onSuccess { call.respondBytes(it, ContentType.Image.PNG) }
-                .onFailure { call.respond(HttpStatusCode.InternalServerError, ErrorResponse(it.message ?: "Screenshot failed")) }
+                .onFailure { call.failFrom(it) }
         }
 
         // ── List the main tabs ────────────────────────────────────────────────
@@ -108,13 +157,21 @@ fun Routing.uiRoutes(api: MontoyaApi) {
             runCatching {
                 onEdt {
                     val tp = mainTabbedPane(frame) ?: throw UiNotFound("Main tab bar not found")
-                    val titles = (0 until tp.tabCount).map { tp.getTitleAt(it) }
-                    UiTabsResponse(titles, tp.selectedIndex, titles.getOrNull(tp.selectedIndex))
+                    val titles = tp.titles()
+                    val nested = nestedTabbedPanes(frame, tp).map { pane ->
+                        val t = pane.titles()
+                        UiTabGroup(t, pane.selectedIndex, t.getOrNull(pane.selectedIndex))
+                    }
+                    UiTabsResponse(titles, tp.selectedIndex, titles.getOrNull(tp.selectedIndex), nested)
                 }
             }.onSuccess { call.respond(it) }.onFailure { call.failFrom(it) }
         }
 
-        // ── Select a top-level tab by name (substring, case-insensitive) or index ──
+        // ── Select a tab by name (substring, case-insensitive) or index ──────────
+        // The main tab bar is tried first. A name that matches nothing there falls back to the
+        // tab bars currently showing inside the open tab (e.g. Autorize's Configuration), so
+        // "Proxy" keeps meaning Burp's Proxy even if some extension also has a tab called that.
+        // An index always refers to the main bar.
         post("/select-tab") {
             val req = runCatching { call.receive<UiSelectTabRequest>() }.getOrElse {
                 return@post call.respond(HttpStatusCode.BadRequest, ErrorResponse(it.message ?: "Bad request body"))
@@ -123,17 +180,22 @@ fun Routing.uiRoutes(api: MontoyaApi) {
                 ?: return@post call.respond(HttpStatusCode.ServiceUnavailable, ErrorResponse("Burp UI frame not available"))
             runCatching {
                 onEdt {
-                    val tp = mainTabbedPane(frame) ?: throw UiNotFound("Main tab bar not found")
-                    val idx = when {
+                    val main = mainTabbedPane(frame) ?: throw UiNotFound("Main tab bar not found")
+                    var tp = main
+                    var idx = when {
                         req.index != null -> req.index
-                        req.name != null -> (0 until tp.tabCount).firstOrNull {
-                            tp.getTitleAt(it).contains(req.name, ignoreCase = true)
-                        } ?: -1
+                        req.name != null -> main.indexOfTitle(req.name)
                         else -> -1
+                    }
+                    if (idx < 0 && req.index == null && req.name != null) {
+                        nestedTabbedPanes(frame, main).firstOrNull { it.indexOfTitle(req.name) >= 0 }?.let {
+                            tp = it
+                            idx = it.indexOfTitle(req.name)
+                        }
                     }
                     if (idx < 0 || idx >= tp.tabCount) throw UiNotFound("No tab matches ${req.name ?: req.index}")
                     tp.selectedIndex = idx
-                    UiActionResponse(true, "Selected tab", tp.getTitleAt(idx))
+                    UiActionResponse(true, if (tp === main) "Selected tab" else "Selected nested tab", tp.getTitleAt(idx))
                 }
             }.onSuccess { call.respond(it) }.onFailure { call.failFrom(it) }
         }

@@ -303,6 +303,55 @@ def main():
             expect=404, tolerate=(503,))
     c.check_png("screenshot", "/api/ui/screenshot")
 
+    # Nested tab bars (an extension's sub-tabs). Re-select the one already open, picking a
+    # title no main tab contains so the fallback, not the main bar, is what answers.
+    if tabs and tabs.get("nested"):
+        main_titles = [t.lower() for t in tabs["tabs"]]
+        for group in tabs["nested"]:
+            title = group.get("selected_title")
+            if title and not any(title.lower() in m for m in main_titles):
+                c.check("select-tab reaches a nested tab bar", "POST", "/api/ui/select-tab",
+                        {"name": title}, verify=lambda p, t=title: None
+                        if p.get("matched") == t and p.get("message") == "Selected nested tab"
+                        else f"got {p}")
+                break
+
+    print("\nUI elements")
+    wins = c.check("windows", "GET", "/api/ui/windows", tolerate=(503,),
+                   verify=lambda p: None if p.get("windows") and p["windows"][0]["id"] == "w0"
+                   else f"no w0: {p}")
+    elems = c.check("elements", "GET", "/api/ui/elements?limit=200", tolerate=(503,),
+                    verify=lambda p: None if p.get("count", 0) > 0
+                    and all(e["id"].startswith("w0:") for e in p["elements"])
+                    else f"empty or badly addressed: {p.get('count')}")
+    c.check("elements filter by type", "GET", "/api/ui/elements?type=button&limit=20",
+            tolerate=(503,), verify=lambda p: None
+            if all("button" in e["type"].lower() for e in p.get("elements", []))
+            else "a non-button slipped through the type filter")
+    c.check("elements of a missing window is a 404", "GET", "/api/ui/elements?window=w99",
+            expect=404, tolerate=(503,))
+    c.check("click needs a target", "POST", "/api/ui/click", {}, expect=400, tolerate=(503,))
+    c.check("click rejects a malformed id", "POST", "/api/ui/click", {"id": "nonsense"},
+            expect=400, tolerate=(503,))
+    c.check("click on a vanished element is a 404", "POST", "/api/ui/click",
+            {"id": "w0:0/999"}, expect=404, tolerate=(503,))
+    c.check("unknown key is a 400", "POST", "/api/ui/key", {"key": "NO_SUCH_KEY"},
+            expect=400, tolerate=(503,))
+    if elems:
+        bar = next((e for e in elems["elements"] if e["type"] == "JTabbedPane" and e.get("items")), None)
+        if bar:
+            current = bar["items"][bar["selected"]] if 0 <= bar["selected"] < len(bar["items"]) else None
+            c.check("type into a tab bar is a 400", "POST", "/api/ui/type",
+                    {"id": bar["id"], "text": "x"}, expect=400)
+            if current is not None:
+                c.check("select re-picks the open tab by index", "POST", "/api/ui/select",
+                        {"id": bar["id"], "index": bar["selected"]},
+                        verify=lambda p, t=current: None if p.get("matched") == t
+                        else f"matched {p.get('matched')!r}, wanted {t!r}")
+            c.check("select with no entry matching is a 404", "POST", "/api/ui/select",
+                    {"id": bar["id"], "text": "no-such-entry-zzz"}, expect=404)
+            c.check_png("screenshot cropped to an element", f"/api/ui/screenshot?id={bar['id']}")
+
     print("\nShell (expected off)")
     c.check("shell status", "GET", "/api/utils/shell/status",
             verify=lambda p: None if "enabled" in p else "no enabled flag")
