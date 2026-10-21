@@ -24,7 +24,21 @@ fun ProxyHttpRequestResponse.toDto(includeBody: Boolean = true): HttpEntryDto {
     )
 }
 
-fun ProxyHttpRequestResponse.toProxyEntryDto(includeBody: Boolean = true): ProxyEntryDto {
+/** Default per-message cap for `include_body=true` history listings; `max_body=0` lifts it. */
+const val DEFAULT_MAX_BODY = 512 * 1024
+
+/**
+ * Truncate a full HTTP message string for a listing. One history page of a thousand entries
+ * whose responses run to hundreds of kilobytes each builds a JSON string in the hundreds of
+ * megabytes; serialising it pinned a Netty worker for an hour and starved Burp's heap. Single-
+ * entry reads keep the whole message; listings cap each one unless the caller asks otherwise.
+ */
+fun capMessage(message: String?, maxBody: Int): String? {
+    if (message == null || maxBody <= 0 || message.length <= maxBody) return message
+    return message.substring(0, maxBody) + "\r\n... [reburp: truncated ${message.length - maxBody} more chars; use max_body=0 or GET /api/proxy/history/{index} for the full message]"
+}
+
+fun ProxyHttpRequestResponse.toProxyEntryDto(includeBody: Boolean = true, maxBody: Int = 0): ProxyEntryDto {
     val req = request()
     val res = response()
     val finalReq = runCatching { finalRequest() }.getOrNull()
@@ -48,12 +62,12 @@ fun ProxyHttpRequestResponse.toProxyEntryDto(includeBody: Boolean = true): Proxy
         response_length = runCatching { res?.toByteArray()?.length() }.getOrNull() ?: 0,
         notes = runCatching { annotations().notes() }.getOrElse { "" },
         highlight = runCatching { annotations().highlightColor().name }.getOrNull(),
-        request = if (includeBody) req?.toString() else null,
-        response = if (includeBody) res?.toString() else null,
-        final_request = if (includeBody) finalReq?.toString() else null,
-        original_response = if (includeBody) origRes?.toString() else null,
+        request = if (includeBody) capMessage(req?.toString(), maxBody) else null,
+        response = if (includeBody) capMessage(res?.toString(), maxBody) else null,
+        final_request = if (includeBody) capMessage(finalReq?.toString(), maxBody) else null,
+        original_response = if (includeBody) capMessage(origRes?.toString(), maxBody) else null,
         http_service_string = runCatching { httpServiceString() }.getOrNull(),
-        request_body = if (includeBody) runCatching { requestBody() }.getOrNull() else null,
+        request_body = if (includeBody) capMessage(runCatching { requestBody() }.getOrNull(), maxBody) else null,
         request_http_version = runCatching { requestHttpVersion() }.getOrNull()
     )
 }

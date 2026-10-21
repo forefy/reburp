@@ -70,6 +70,7 @@ fun openApiJson(): String = """
           { "name": "offset",       "in": "query", "schema": { "type": "integer", "default": 0 },   "description": "Pagination offset (0-based)" },
           { "name": "limit",        "in": "query", "schema": { "type": "integer", "default": 100 }, "description": "Maximum number of items to return" },
           { "name": "include_body", "in": "query", "schema": { "type": "boolean", "default": false }, "description": "Include raw request/response text" },
+          { "name": "max_body",     "in": "query", "schema": { "type": "integer", "default": 524288 }, "description": "With include_body, cap each message string at this many characters (a marker says how much was cut). 0 lifts the cap; GET /api/proxy/history/{index} always returns the whole message." },
           {"name": "host", "in": "query", "schema": {"type": "string"}, "description": "Exact hostname, case-insensitive"},
           {"name": "method", "in": "query", "schema": {"type": "string"}, "description": "HTTP method, e.g. GET or POST"},
           {"name": "mime_type", "in": "query", "schema": {"type": "string"}, "description": "Burp MIME type name, e.g. HTML, JSON, SCRIPT, IMAGE_JPEG"},
@@ -122,7 +123,8 @@ fun openApiJson(): String = """
           { "name": "regex",        "in": "query", "required": true,  "schema": { "type": "string" }, "description": "Java-compatible regular expression" },
           { "name": "offset",       "in": "query", "schema": { "type": "integer", "default": 0 } },
           { "name": "limit",        "in": "query", "schema": { "type": "integer", "default": 100 } },
-          { "name": "include_body", "in": "query", "schema": { "type": "boolean", "default": false } }
+          { "name": "include_body", "in": "query", "schema": { "type": "boolean", "default": false } },
+          { "name": "max_body",     "in": "query", "schema": { "type": "integer", "default": 524288 }, "description": "With include_body, cap each message string at this many characters; 0 lifts the cap." }
         ],
         "responses": {
           "200": {

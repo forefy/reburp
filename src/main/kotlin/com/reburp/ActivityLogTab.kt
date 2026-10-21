@@ -132,10 +132,19 @@ class ActivityLogTab(private val api: MontoyaApi) {
     init {
         setupTable()
 
-        // Restore entries persisted from previous sessions
+        // Restore entries persisted from previous sessions. This runs on Burp's extension-loading
+        // thread, so it must stay cheap: rows persisted before bodies were capped can each carry
+        // a multi-megabyte API response, and parsing a few hundred of those on a busy heap kept
+        // Burp stuck in "loading" for minutes. Oversized rows are dropped, not parsed.
         runCatching {
-            persistedLog.forEach { json ->
+            val oversized = ArrayList<Int>()
+            persistedLog.forEachIndexed { i, json ->
+                if (json.length > MAX_PERSISTED_ROW_CHARS) { oversized += i; return@forEachIndexed }
                 runCatching { tableModel.add(entryFromJson(json)) }.getOrNull()
+            }
+            for (i in oversized.asReversed()) runCatching { persistedLog.removeAt(i) }
+            if (oversized.isNotEmpty()) {
+                api.logging().logToOutput("reburp: dropped ${oversized.size} oversized activity log rows persisted by an earlier build")
             }
             if (tableModel.rowCount > 0) counter.set(tableModel.rowCount)
         }
@@ -726,8 +735,8 @@ class ActivityLogTab(private val api: MontoyaApi) {
             status         = displayStatus as Int,
             durationMs     = durationMs,
             requestHeaders = requestHeaders,
-            requestBody    = requestBody,
-            responseBody   = responseBody,
+            requestBody    = capBody(requestBody),
+            responseBody   = capBody(responseBody),
             notes          = displayNotes  as String,
             sessionId      = sessionId,
             host           = service?.host() ?: "",
@@ -803,10 +812,19 @@ class ActivityLogTab(private val api: MontoyaApi) {
 
     fun allEntries(): List<LogEntry> = (0 until tableModel.rowCount).map { tableModel.getEntry(it) }
 
+    /** Keep the log a record of what was called, not a second copy of every payload. */
+    private fun capBody(body: String): String =
+        if (body.length <= MAX_BODY_CHARS) body
+        else body.substring(0, MAX_BODY_CHARS) + "\n... [reburp log: truncated ${body.length - MAX_BODY_CHARS} more chars]"
+
     companion object {
         private val EXPORT_STAMP_FMT = DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss")
         private val EXPORT_SHOWN_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
         private const val MAX_PERSISTED_ENTRIES = 2000
+        /** Per-body cap for what the activity log keeps in memory and in the project file. */
+        private const val MAX_BODY_CHARS = 256 * 1024
+        /** Rows above this were written before the cap existed; parsing them is not worth a hung load. */
+        private const val MAX_PERSISTED_ROW_CHARS = 2 * 1024 * 1024
     }
 }
 
