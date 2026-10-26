@@ -100,7 +100,10 @@ with `text` or `index` for combo boxes, lists, tables and trees, and `POST /api/
 `ENTER`) for dialogs. Ids are paths in the live layout, so re-list after switching tabs or opening a
 dialog, and check `GET /api/ui/windows` when a dialog appears: it is `w1`, not part of `w0`.
 Burp's own controls (Repeater's Send, for one) are obfuscated custom widgets, not JButtons: find them
-by `text`, not `type`, and prefer `/click` by id over `click-button`, which only knows real buttons.
+by `text`, not `type`. `click-button` matches labels and tooltips, so Burp's icon-only editor
+toolbar toggles work by name: `{"text": "line wrapping"}` flips wrapping in the first editor that
+has it showing. Their tooltip names the next action, so `GET /api/ui/elements?text=line wrapping`
+tells you the current state ("Enable line wrapping" means it is off) without clicking.
 
 ## Common tasks -> endpoints
 

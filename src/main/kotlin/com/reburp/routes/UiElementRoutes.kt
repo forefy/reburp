@@ -139,7 +139,7 @@ private fun implName(c: Component): String? {
     return k.simpleName.takeIf { !isStandard(k) }
 }
 
-private fun listensForMouse(c: Component): Boolean =
+internal fun listensForMouse(c: Component): Boolean =
     c is AbstractButton || c.mouseListeners.isNotEmpty() || c.mouseMotionListeners.isNotEmpty()
 
 /**
@@ -195,11 +195,23 @@ private fun rowsOf(c: Component): Int? = when (c) {
 }
 
 /** The components an agent would act on; plain containers are noise unless `all` is asked for. */
-private fun interesting(c: Component): Boolean = when (c) {
+internal fun interesting(c: Component): Boolean = when (c) {
     is AbstractButton, is JTextComponent, is JComboBox<*>, is JList<*>, is JTree, is JTable,
     is JTabbedPane, is JSpinner, is JSlider, is JPopupMenu, is Window -> true
-    is JLabel -> !c.text.isNullOrBlank()
+    // Burp's editor toolbar icons (line wrapping, hide headers, non-printables) are labels with
+    // no text, only a tooltip and a mouse listener; those are exactly what an agent wants to find.
+    is JLabel -> !c.text.isNullOrBlank() || !c.toolTipText.isNullOrBlank() || listensForMouse(c)
+    is JComponent -> !c.toolTipText.isNullOrBlank() && listensForMouse(c)
     else -> false
+}
+
+/** A showing, enabled component an agent can click by its label or tooltip. */
+internal fun matchesLabel(c: Component, text: String): Boolean {
+    if (!c.isShowing || !c.isEnabled) return false
+    val label = (c as? AbstractButton)?.text ?: (c as? JLabel)?.text
+    val tip = (c as? JComponent)?.toolTipText
+    return (label?.contains(text, ignoreCase = true) == true || tip?.contains(text, ignoreCase = true) == true) &&
+        (c is AbstractButton || listensForMouse(c))
 }
 
 internal fun describe(c: Component, id: String, root: Container): UiElement {

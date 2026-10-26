@@ -315,6 +315,14 @@ def main():
             {"name": "no-such-tab-zzz"}, expect=404, tolerate=(503,),
             verify=lambda p: None if "No tab matches" in (p or {}).get("error", "")
             else f"unhelpful error: {p}")
+    # Burp's editor toolbar toggles are icon-only labels; they must be listable by tooltip.
+    # Which editors exist depends on what the user has open, so an empty list is tolerated,
+    # but anything listed must carry the tooltip that matched it.
+    c.check("icon-only toolbar toggles list by tooltip", "GET",
+            "/api/ui/elements?hidden=true&text=line%20wrapping", tolerate=(503,),
+            verify=lambda p: None if all("line wrapping" in (e.get("tooltip") or "").lower()
+                                         for e in p.get("elements", []))
+            else "an element matched 'line wrapping' without that tooltip")
     c.check("unknown button is a 404", "POST", "/api/ui/click-button",
             {"text": "no-such-button-zzz"}, expect=404, tolerate=(503,))
     c.check("out-of-range row is a 404", "POST", "/api/ui/select-row",

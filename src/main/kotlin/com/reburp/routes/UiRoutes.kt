@@ -16,6 +16,7 @@ import java.awt.image.BufferedImage
 import java.io.ByteArrayOutputStream
 import javax.imageio.ImageIO
 import javax.swing.AbstractButton
+import javax.swing.JComponent
 import javax.swing.JTabbedPane
 import javax.swing.JTable
 import javax.swing.SwingUtilities
@@ -200,7 +201,9 @@ fun Routing.uiRoutes(api: MontoyaApi) {
             }.onSuccess { call.respond(it) }.onFailure { call.failFrom(it) }
         }
 
-        // ── Click a button by its visible text (substring, case-insensitive) ──
+        // ── Click a button by its visible text or tooltip (substring, case-insensitive) ──
+        // Real buttons are pressed through their own action. Burp's toolbar icons are labels
+        // with a tooltip and a mouse listener, so those get a real click instead.
         post("/click-button") {
             val req = runCatching { call.receive<UiClickButtonRequest>() }.getOrElse {
                 return@post call.respond(HttpStatusCode.BadRequest, ErrorResponse(it.message ?: "Bad request body"))
@@ -209,13 +212,13 @@ fun Routing.uiRoutes(api: MontoyaApi) {
                 ?: return@post call.respond(HttpStatusCode.ServiceUnavailable, ErrorResponse("Burp UI frame not available"))
             runCatching {
                 onEdt {
-                    val btn = walk(frame)
-                        .filterIsInstance<AbstractButton>()
-                        .filter { it.isShowing && it.isEnabled }
-                        .firstOrNull { it.text != null && it.text.contains(req.text, ignoreCase = true) }
-                        ?: throw UiNotFound("No visible, enabled button matches '${req.text}'")
-                    btn.doClick()
-                    UiActionResponse(true, "Clicked button", btn.text)
+                    val target = walk(frame).firstOrNull { matchesLabel(it, req.text) }
+                        ?: throw UiNotFound("No visible, enabled button or tooltip matches '${req.text}'")
+                    val label = (target as? AbstractButton)?.text?.takeIf { it.isNotBlank() }
+                        ?: (target as? JComponent)?.toolTipText
+                    if (target is AbstractButton) target.doClick()
+                    else clickAt(target, target.width / 2, target.height / 2, "left", 1)
+                    UiActionResponse(true, "Clicked button", label)
                 }
             }.onSuccess { call.respond(it) }.onFailure { call.failFrom(it) }
         }
