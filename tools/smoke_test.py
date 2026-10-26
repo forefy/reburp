@@ -234,7 +234,9 @@ def main():
     if head:
         c.check("runs a jar built from this checkout", "GET", "/api/status",
                 verify=lambda p: None if (p.get("build") or "").split(" ")[0].split("-")[0] == head
-                else f"running build {p.get('build')!r}, but HEAD is {head}: reload did not take")
+                else f"running build {p.get('build')!r}, but HEAD is {head}: either the reload "
+                     f"did not take, or the jar was built before the last commit (a -dirty id "
+                     f"means uncommitted changes went in). Rebuild from HEAD and reload.")
 
     print("\nNumbers")
     c.check("hex to decimal", "POST", "/api/utils/number/convert",
