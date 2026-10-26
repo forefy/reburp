@@ -11,7 +11,7 @@ plugins {
 }
 
 group = "com.reburp"
-version = "1.1.14"
+version = "1.1.15"
 
 repositories {
     mavenCentral()
