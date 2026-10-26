@@ -86,8 +86,8 @@ internal fun uiPaths(): String = """
     "/api/ui/click-button": {
       "post": {
         "tags": ["UI"],
-        "summary": "Click a visible button by its label",
-        "description": "**[Montoya API]** Finds the first showing, enabled button anywhere in the Burp window whose text contains `text` (case-insensitive substring) and invokes its click action on the Swing event thread. Checkboxes, radio buttons, toggles and menu items count as buttons, so this also toggles an option or picks an entry from an open context menu. Best-effort: it matches on visible text only, so prefer labels that are unique on the current tab. For anything without a label, use `GET /api/ui/elements` and `POST /api/ui/click`.",
+        "summary": "Click a visible button by its label or tooltip",
+        "description": "**[Montoya API]** Finds the first showing, enabled control anywhere in the Burp window whose label or tooltip contains `text` (case-insensitive substring). A real button, checkbox, radio, toggle or menu item is pressed through its own action; an icon-only control such as the message editors' *Enable line wrapping*, *Hide specified headers* or *Show non-printable chars* toggles is matched by tooltip and given a real click. Toggle tooltips flip between Enable and Disable, so `GET /api/ui/elements?text=line wrapping` reads the current state. Best-effort: prefer labels that are unique on the current tab, and use `GET /api/ui/elements` with `POST /api/ui/click` for anything else.",
         "operationId": "uiClickButton",
         "x-api-source": "montoya",
         "requestBody": {
@@ -354,7 +354,7 @@ internal fun uiSchemas(): String = """
         "type": "object",
         "required": ["text"],
         "properties": {
-          "text": { "type": "string", "description": "Case-insensitive substring of the button's visible label. The first showing, enabled match anywhere in the window is clicked." }
+          "text": { "type": "string", "description": "Case-insensitive substring of the control's visible label or tooltip. The first showing, enabled match anywhere in the window is clicked." }
         }
       },
 
@@ -414,7 +414,7 @@ internal fun uiSchemas(): String = """
           "type": { "type": "string", "description": "Nearest standard Swing class name, for example JButton, JCheckBox, JTextField, JComboBox, JTable, JTabbedPane, JMenuItem, JLabel. Burp's own obfuscated classes resolve to their Swing ancestor; see `impl`." },
           "text": { "type": "string", "nullable": true, "description": "Visible text: a button or label caption, a text field's content (first 200 chars), the selected tab, item or value of a chooser." },
           "name": { "type": "string", "nullable": true, "description": "The component's programmatic name, when the author set one." },
-          "tooltip": { "type": "string", "nullable": true },
+          "tooltip": { "type": "string", "nullable": true, "description": "The hover text. Icon-only controls carry their meaning here, and a toggle's tooltip names the action it would take next (Enable ... / Disable ...), which reads as its current state." },
           "bounds": { "${'$'}ref": "#/components/schemas/UiBounds" },
           "enabled": { "type": "boolean" },
           "showing": { "type": "boolean", "description": "Whether the element is currently painted; false only appears with `hidden=true`." },

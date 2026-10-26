@@ -169,6 +169,22 @@ class UiElementHelpersTest {
     }
 
     @Test
+    fun `icon-only toolbar labels count as elements and match by tooltip`() {
+        val icon = JLabel().apply { toolTipText = "Enable line wrapping" }
+        icon.addMouseListener(object : MouseAdapter() {})
+        val mute = JLabel()
+        val caption = JLabel("Request")
+
+        assertTrue(interesting(icon), "a tooltip plus a listener is a control")
+        assertTrue(interesting(caption), "a caption is worth listing")
+        assertTrue(!interesting(mute), "a blank label with nothing attached is noise")
+
+        // matchesLabel needs a showing component; nothing is showing headless, so only the
+        // negative path is observable here. The live smoke test covers the positive one.
+        assertTrue(!matchesLabel(icon, "line wrapping"))
+    }
+
+    @Test
     fun `history messages are capped with a marker and 0 lifts the cap`() {
         val message = "x".repeat(100)
         val capped = capMessage(message, 10)!!
