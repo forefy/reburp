@@ -33,6 +33,9 @@ scan, decoding a token - becomes a JSON call an agent or a `curl` line can make.
 
 It pairs with the [`burp-interaction`](.claude/skills/burp-interaction) agent skill so an AI
 assistant can drive Burp directly.
+Codex users get the same context from the skills in [`.codex/skills`](.codex/skills):
+[`reburp-api`](.codex/skills/reburp-api) (setup, conventions, a spec-aware CLI client and the full
+endpoint reference) and [`reburp-traffic`](.codex/skills/reburp-traffic).
 
 - [What reburp unlocks](#what-reburp-unlocks)
 - [Install](#install)
