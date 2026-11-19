@@ -87,7 +87,7 @@ internal fun uiPaths(): String = """
       "post": {
         "tags": ["UI"],
         "summary": "Click a visible button by its label or tooltip",
-        "description": "**[Montoya API]** Finds the first showing, enabled control anywhere in the Burp window whose label or tooltip contains `text` (case-insensitive substring). A real button, checkbox, radio, toggle or menu item is pressed through its own action; an icon-only control such as the message editors' *Enable line wrapping*, *Hide specified headers* or *Show non-printable chars* toggles is matched by tooltip and given a real click. Toggle tooltips flip between Enable and Disable, so `GET /api/ui/elements?text=line wrapping` reads the current state. Best-effort: prefer labels that are unique on the current tab, and use `GET /api/ui/elements` with `POST /api/ui/click` for anything else.",
+        "description": "**[Montoya API]** Finds the first showing, enabled control anywhere in the Burp window whose label or tooltip contains `text` (case-insensitive substring). A real button, checkbox, radio, toggle or menu item is pressed through its own action; an icon-only control such as the message editors' *Enable line wrapping*, *Hide specified headers* or *Show non-printable chars* toggles is matched by tooltip and given a real click. Toggle tooltips flip between Enable and Disable, so `GET /api/ui/elements?text=line wrapping` reads the current state. Best-effort: prefer labels that are unique on the current tab, and use `GET /api/ui/elements` with `POST /api/ui/click` for anything else. If the action opens a modal dialog (a delete confirmation, say), the call returns after about 1.5 seconds with a `message` saying a dialog is waiting, instead of blocking until someone answers it; find the dialog with `GET /api/ui/windows` and click its buttons.",
         "operationId": "uiClickButton",
         "x-api-source": "montoya",
         "requestBody": {
@@ -202,7 +202,7 @@ internal fun uiPaths(): String = """
       "post": {
         "tags": ["UI"],
         "summary": "Click any element by id, or a point in a window",
-        "description": "**[Montoya API]** Dispatches real mouse press, release and click events at the centre of the element `id`, or at (`x`, `y`) in window coordinates of `window`. As AWT does, the events go to the deepest component at that point unless it ignores mouse input, in which case they go to its nearest ancestor with mouse listeners; `matched` says which component received them. `button` may be left, middle or right; a right click raises the platform's popup trigger, so Burp's context menus (Send to Repeater, Add to scope, ...) open and their items can then be picked with `POST /api/ui/click-button` by label or listed with `GET /api/ui/elements`. `count` of 2 double-clicks. Because the events go through the component's own listeners, this reaches anything the user could click, including extension panels and dialogs.",
+        "description": "**[Montoya API]** Dispatches real mouse press, release and click events at the centre of the element `id`, or at (`x`, `y`) in window coordinates of `window`. As AWT does, the events go to the deepest component at that point unless it ignores mouse input, in which case they go to its nearest ancestor with mouse listeners; `matched` says which component received them. `button` may be left, middle or right; a right click raises the platform's popup trigger, so Burp's context menus (Send to Repeater, Add to scope, ...) open and their items can then be picked with `POST /api/ui/click-button` by label or listed with `GET /api/ui/elements`. `count` of 2 double-clicks. Because the events go through the component's own listeners, this reaches anything the user could click, including extension panels and dialogs. If the action opens a modal dialog (a delete confirmation, say), the call returns after about 1.5 seconds with a `message` saying a dialog is waiting, instead of blocking until someone answers it; find the dialog with `GET /api/ui/windows` and click its buttons.",
         "operationId": "uiClick",
         "x-api-source": "montoya",
         "requestBody": {
@@ -292,7 +292,7 @@ internal fun uiPaths(): String = """
       "post": {
         "tags": ["UI"],
         "summary": "Send a key press to an element, or to whatever has focus",
-        "description": "**[Montoya API]** Dispatches key pressed, typed and released events for `key`, named as in `java.awt.event.KeyEvent` without the `VK_` prefix (ENTER, TAB, ESCAPE, DELETE, F5, a single letter or digit) with optional `modifiers` (shift, ctrl, alt, meta). Goes to the element `id` when given, otherwise to the current focus owner; a target that is not showing is refused with 400, since AWT would drop its keys silently. Useful for confirming or dismissing dialogs and for shortcuts such as meta+R.",
+        "description": "**[Montoya API]** Dispatches key pressed, typed and released events for `key`, named as in `java.awt.event.KeyEvent` without the `VK_` prefix (ENTER, TAB, ESCAPE, DELETE, F5, a single letter or digit) with optional `modifiers` (shift, ctrl, alt, meta). Goes to the element `id` when given, otherwise to the current focus owner; a target that is not showing is refused with 400, since AWT would drop its keys silently. Useful for confirming or dismissing dialogs and for shortcuts such as meta+R. If the action opens a modal dialog (a delete confirmation, say), the call returns after about 1.5 seconds with a `message` saying a dialog is waiting, instead of blocking until someone answers it; find the dialog with `GET /api/ui/windows` and click its buttons.",
         "operationId": "uiKey",
         "x-api-source": "montoya",
         "requestBody": {
@@ -419,7 +419,7 @@ internal fun uiSchemas(): String = """
           "enabled": { "type": "boolean" },
           "showing": { "type": "boolean", "description": "Whether the element is currently painted; false only appears with `hidden=true`." },
           "focused": { "type": "boolean", "description": "Whether the element owns keyboard focus." },
-          "items": { "type": "array", "nullable": true, "items": { "type": "string" }, "description": "For combo boxes and lists their entries (first 100), for tab bars the tab titles." },
+          "items": { "type": "array", "nullable": true, "items": { "type": "string" }, "description": "For combo boxes and lists their entries (first 100), for tab bars the tab titles, for trees the rows as drawn (first 100), such as site map hosts." },
           "selected": { "type": "integer", "nullable": true, "description": "Selected index for combo boxes, lists, tab bars, tables (row) and trees (row); -1 when nothing is selected." },
           "rows": { "type": "integer", "nullable": true, "description": "Row count for tables, lists and trees." },
           "children": { "type": "integer", "description": "Number of direct child components." },

@@ -62,6 +62,20 @@ internal fun undocumentedPaths(): String = """
       }
     },
 
+    "/api/sessions/{id}": {
+      "delete": {
+        "tags": ["Activity Log"],
+        "summary": "Delete a reburp session",
+        "description": "Removes one labelled session from the list POST /api/session adds to. Calls already logged under it stay in the activity log.",
+        "operationId": "deleteReburpSession",
+        "parameters": [ { "name": "id", "in": "path", "required": true, "schema": { "type": "string" }, "description": "Session id from GET /api/sessions." } ],
+        "responses": {
+          "200": { "description": "Deleted", "content": { "application/json": { "schema": { "${'$'}ref": "#/components/schemas/MessageResponse" } } } },
+          "404": { "description": "No session with that id", "content": { "application/json": { "schema": { "${'$'}ref": "#/components/schemas/ErrorResponse" } } } }
+        }
+      }
+    },
+
     "/api/repeater/tabs": {
       "delete": {
         "tags": ["HTTP"],
@@ -89,7 +103,7 @@ internal fun undocumentedPaths(): String = """
       "post": {
         "tags": ["Bambda"],
         "summary": "Generate a Bambda request chain",
-        "description": "Builds Bambda source for a multi-step request chain, extracting a value from each step's response to feed the next, and optionally imports it.",
+        "description": "Builds a Repeater custom action Bambda that sends each step in turn, extracting values from one step's response (`$.key` for a JSON string field, or a regex whose first group is the value) and adding them to later steps' headers through `inject` templates such as `Authorization: Bearer {{token}}`. It is saved into the Bambda library unless `import_to_library` is false, in which case only the source comes back.",
         "operationId": "generateBambdaChain",
         "requestBody": {
           "required": true,
@@ -218,7 +232,7 @@ internal fun undocumentedSchemas(): String = """
           "headers": { "type": "object", "additionalProperties": { "type": "string" } },
           "body":    { "type": "string", "nullable": true },
           "extract": { "type": "object", "additionalProperties": { "type": "string" }, "description": "Variable name to a jsonpath or regex pulled from this step's response, e.g. {\"token\": \"$.access\"}" },
-          "inject":  { "type": "object", "additionalProperties": { "type": "string" }, "description": "Variable name to the header it fills in the next step, e.g. {\"token\": \"Authorization: Bearer {token}\"}" }
+          "inject":  { "type": "object", "additionalProperties": { "type": "string" }, "description": "Variable name to a header line added to this step, with {{var}} replaced by a value an earlier step extracted, e.g. {\"token\": \"Authorization: Bearer {{token}}\"}" }
         }
       },
 
@@ -230,7 +244,8 @@ internal fun undocumentedSchemas(): String = """
           "host":  { "type": "string" },
           "port":  { "type": "integer", "default": 443 },
           "https": { "type": "boolean", "default": true },
-          "steps": { "type": "array", "items": { "${'$'}ref": "#/components/schemas/ChainStep" } }
+          "steps": { "type": "array", "items": { "${'$'}ref": "#/components/schemas/ChainStep" } },
+          "import_to_library": { "type": "boolean", "default": true, "description": "Save the chain into Burp's Bambda library. False returns the source without saving anything." }
         }
       },
 

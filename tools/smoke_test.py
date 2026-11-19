@@ -545,6 +545,15 @@ def exercise_everything(c, args):
         c.check("poll with detail", "GET", f"/api/collaborator/interactions/{key}",
                 verify=is_list_or_obj)
 
+    c.check("generate a Bambda chain without saving it", "POST", "/api/bambda/generate-chain",
+            {"name": "reburp smoke", "host": "127.0.0.1", "port": args.port, "https": False,
+             "import_to_library": False,
+             "steps": [{"method": "GET", "path": "/api/status", "extract": {"v": "$.extension"}},
+                       {"method": "GET", "path": "/api/status", "inject": {"v": "X-V: {{v}}"}}]},
+            verify=lambda p: None if p.get("imported") is False and "api.http().sendRequest" in p.get("source", "")
+            and "api()" not in p["source"] and 'vars.getOrDefault("v"' in p["source"]
+            else f"unexpected chain: {str(p)[:160]}")
+
     print("\nAI, WebSockets and refusals")
     ai = c.check("AI status", "GET", "/api/ai/status", verify=has("enabled"))
     if ai and ai.get("enabled") and args.live:
@@ -996,15 +1005,17 @@ def main():
             expect=400, tolerate=(403,),
             verify=lambda p: None if "host" in (p or {}).get("error", "") else f"not refused: {p}")
 
-    print("\nRepeater and Intruder")
-    # Both only populate a Burp tab, so no request leaves the machine. sendToIntruder rejects a
-    # service-less request ("HttpRequest must have an HttpService") where sendToRepeater tolerates
-    # it, so intruder/send used to 500 on the same body repeater/send accepted.
-    example_req = "GET / HTTP/1.1\r\nHost: example.com\r\n\r\n"
-    c.check("send to Repeater", "POST", "/api/repeater/send",
-            {"raw_request": example_req, "tab_name": "reburp smoke test"}, verify=wrote_something)
-    c.check("send to Intruder", "POST", "/api/intruder/send",
-            {"raw_request": example_req, "tab_name": "reburp smoke test"}, verify=wrote_something)
+    if args.traces:
+        print("\nRepeater and Intruder (--traces)")
+        # Both only populate a Burp tab, so no request leaves the machine, but each run adds a
+        # tab the API cannot close, so they only run with --traces. sendToIntruder rejects a
+        # service-less request ("HttpRequest must have an HttpService") where sendToRepeater
+        # tolerates it, so intruder/send used to 500 on the same body repeater/send accepted.
+        example_req = "GET / HTTP/1.1\r\nHost: example.com\r\n\r\n"
+        c.check("send to Repeater", "POST", "/api/repeater/send",
+                {"raw_request": example_req, "tab_name": "reburp smoke test"}, verify=wrote_something)
+        c.check("send to Intruder", "POST", "/api/intruder/send",
+                {"raw_request": example_req, "tab_name": "reburp smoke test"}, verify=wrote_something)
 
     print("\nQuery parameters are honoured")
     # A documented parameter the handler never reads answers 200 with unfiltered data, which a
