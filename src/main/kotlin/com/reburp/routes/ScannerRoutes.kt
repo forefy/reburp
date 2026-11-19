@@ -180,7 +180,14 @@ fun Routing.scannerRoutes(api: MontoyaApi) {
                 val id = UUID.randomUUID().toString().take(8)
                 scannerTasks[id] = crawl
                 call.respond(ScanTaskDto(id, crawl.statusMessage(), crawl.requestCount(), crawl.errorCount(), null))
-            }.onFailure { call.respond(HttpStatusCode.BadRequest, ErrorResponse(it.message ?: "Error")) }
+            }.onFailure {
+                // Burp 2026.11 still answers Montoya's startCrawl with "Not yet implemented",
+                // which used to come back as a 400 as if the request were at fault.
+                if (it is UnsupportedOperationException) call.respond(HttpStatusCode.NotImplemented, ErrorResponse(
+                    "This Burp version does not implement crawling through the extension API (${it.message}). " +
+                    "Start the crawl from Burp's Dashboard, or audit known requests with POST /api/scanner/audit/mode."))
+                else call.respond(HttpStatusCode.BadRequest, ErrorResponse(it.message ?: "Error"))
+            }
         }
 
         // ── Task status ───────────────────────────────────────────────────────
