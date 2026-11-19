@@ -140,6 +140,10 @@ fun normalizeRequest(raw: String): String {
     val lines = headerSection.split("\r\n").toMutableList()
     val clIdx = lines.indexOfFirst { it.startsWith("Content-Length:", ignoreCase = true) }
     if (clIdx >= 0) lines[clIdx] = "Content-Length: ${bodyBytes.size}"
+    // A raw request with a body and no length used to go out as-is, so the server read no body
+    // (Burp does not add the header). Chunked bodies carry their own framing.
+    else if (lines.none { it.startsWith("Transfer-Encoding:", ignoreCase = true) })
+        lines.add("Content-Length: ${bodyBytes.size}")
     return lines.joinToString("\r\n") + "\r\n\r\n" + body
 }
 

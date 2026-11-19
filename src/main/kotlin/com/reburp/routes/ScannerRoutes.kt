@@ -309,19 +309,23 @@ fun Routing.scannerRoutes(api: MontoyaApi) {
         // ── BChecks / Bambdas config export ───────────────────────────────────
         // Montoya does not expose a list or delete API for BChecks or Bambdas.
         // Use these endpoints to export the raw config sections where they are stored,
-        // then use PUT /api/config/project or PUT /api/config/user to write back changes.
+        // then use PUT /api/config/user (BChecks) or PUT /api/config/project (Bambdas) to
+        // write back changes.
 
         get("/bchecks/config") {
             if (!isPro) return@get call.respond(HttpStatusCode.Forbidden, ErrorResponse("Requires Burp Suite Professional"))
             runCatching {
-                call.respond(StringResult(api.burpSuite().exportProjectOptionsAsJson("scanner")))
+                // BChecks are user options. This used to export a "scanner" project section that does
+                // not exist, and Burp answers an unknown section with the whole project config.
+                call.respond(StringResult(api.burpSuite().exportUserOptionsAsJson("user_options.bchecks")))
             }.onFailure { call.respond(HttpStatusCode.InternalServerError, ErrorResponse("Failed to export scanner config: ${it.message}")) }
         }
 
         get("/bambda/config") {
             runCatching {
-                call.respond(StringResult(api.burpSuite().exportUserOptionsAsJson()))
-            }.onFailure { call.respond(HttpStatusCode.InternalServerError, ErrorResponse("Failed to export user config: ${it.message}")) }
+                // Bambda filters are the project's "bambda" section, not anywhere in user options.
+                call.respond(StringResult(api.burpSuite().exportProjectOptionsAsJson("bambda")))
+            }.onFailure { call.respond(HttpStatusCode.InternalServerError, ErrorResponse("Failed to export Bambda config: ${it.message}")) }
         }
     }
 }

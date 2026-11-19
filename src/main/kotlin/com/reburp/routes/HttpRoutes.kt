@@ -304,9 +304,14 @@ fun Routing.httpRoutes(api: MontoyaApi, activityLog: ActivityLogTab? = null) {
         val scopeOnly = call.request.queryParameters["scope_only"]?.toBooleanStrictOrNull() ?: false
         val includeValues = call.request.queryParameters["include_values"]?.toBooleanStrictOrNull() ?: false
         val includeSubdomains = call.request.queryParameters["include_subdomains"]?.toBooleanStrictOrNull() ?: true
+        // Burp keeps a cookie in the jar after it expires (which is also how DELETE removes
+        // one), but never sends it, so leave expired ones out unless asked.
+        val includeExpired = call.request.queryParameters["include_expired"]?.toBooleanStrictOrNull() ?: false
+        val now = java.time.ZonedDateTime.now()
         val domainFilter = domain?.trim()?.removePrefix(".")?.lowercase()?.ifBlank { null }
 
         val cookies = api.http().cookieJar().cookies()
+            .filter { cookie -> includeExpired || cookie.expiration().map { it.isAfter(now) }.orElse(true) }
             .filter { cookie ->
                 if (domainFilter == null) true
                 else {
@@ -351,7 +356,9 @@ fun Routing.httpRoutes(api: MontoyaApi, activityLog: ActivityLogTab? = null) {
                     )
                 }
             } else null
-            api.http().cookieJar().setCookie(req.name, req.value, req.domain, req.path, expiresAt)
+            // Montoya takes path before domain; passing them the other way round stored every
+            // cookie with its domain as the path, so it never matched a request.
+            api.http().cookieJar().setCookie(req.name, req.value, req.path ?: "/", req.domain, expiresAt)
             call.respond(MessageResponse("Cookie '${req.name}' set for domain '${req.domain}'"))
         }.onFailure { e ->
             if (!call.response.isCommitted) call.respond(HttpStatusCode.InternalServerError, ErrorResponse(e.message ?: "Error"))
@@ -371,7 +378,7 @@ fun Routing.httpRoutes(api: MontoyaApi, activityLog: ActivityLogTab? = null) {
             if (matches.isEmpty()) return@runCatching call.respond(HttpStatusCode.NotFound, ErrorResponse("Cookie '$name' not found${if (domain != null) " for domain '$domain'" else ""}"))
             // Montoya API has no deleteCookie; expire each match by setting expiry to epoch
             val epoch = java.time.ZonedDateTime.ofInstant(java.time.Instant.EPOCH, java.time.ZoneOffset.UTC)
-            matches.forEach { c -> jar.setCookie(c.name(), "", c.domain(), c.path(), epoch) }
+            matches.forEach { c -> jar.setCookie(c.name(), "", c.path(), c.domain(), epoch) }
             call.respond(MessageResponse("Deleted ${matches.size} cookie(s) named '$name'"))
         }.onFailure { if (!call.response.isCommitted) call.respond(HttpStatusCode.InternalServerError, ErrorResponse(it.message ?: "Error")) }
     }
@@ -421,7 +428,8 @@ fun Routing.httpRoutes(api: MontoyaApi, activityLog: ActivityLogTab? = null) {
             if (firstStatus !in req.retry_on) {
                 call.respond(HttpSendResponse(
                     request  = first?.request()?.toString() ?: "",
-                    response = first?.response()?.toString()
+                    response = first?.response()?.toString(),
+                    status   = first?.response()?.statusCode()?.toInt()
                 ))
                 return@post
             }
@@ -437,7 +445,8 @@ fun Routing.httpRoutes(api: MontoyaApi, activityLog: ActivityLogTab? = null) {
             val retry = sendTarget(headerLine)
             call.respond(HttpSendResponse(
                 request  = retry?.request()?.toString() ?: "",
-                response = retry?.response()?.toString()
+                response = retry?.response()?.toString(),
+                status   = retry?.response()?.statusCode()?.toInt()
             ))
         }.onFailure { if (!call.response.isCommitted) call.respond(HttpStatusCode.InternalServerError, ErrorResponse(it.message ?: "Error")) }
     }
@@ -538,6 +547,8 @@ fun Routing.httpRoutes(api: MontoyaApi, activityLog: ActivityLogTab? = null) {
         }
         if (req.host.isBlank())          return@post call.respond(HttpStatusCode.BadRequest, ErrorResponse("'host' is required"))
         if (req.path_template.isBlank()) return@post call.respond(HttpStatusCode.BadRequest, ErrorResponse("'path_template' is required"))
+        if ("{word}" !in req.path_template) return@post call.respond(HttpStatusCode.BadRequest,
+            ErrorResponse("'path_template' has no {word} placeholder, so every request would hit the same path. Example: /api/{word}"))
         if (req.wordlist.isEmpty())      return@post call.respond(HttpStatusCode.BadRequest, ErrorResponse("'wordlist' must not be empty"))
         if (req.wordlist.size > 500)     return@post call.respond(HttpStatusCode.BadRequest, ErrorResponse("'wordlist' exceeds maximum of 500"))
         val concurrency = req.concurrency.coerceIn(1, 20)
@@ -766,7 +777,11 @@ fun Routing.httpRoutes(api: MontoyaApi, activityLog: ActivityLogTab? = null) {
         )
         runCatching {
             var mutated = HttpResponse.httpResponse(req.response)
-            if (req.status_code != null) mutated = mutated.withStatusCode(req.status_code.toShort())
+            if (req.status_code != null) {
+                // withStatusCode keeps the old reason phrase, which gave "404 OK".
+                mutated = mutated.withStatusCode(req.status_code.toShort())
+                    .withReasonPhrase(HttpStatusCode.fromValue(req.status_code).description)
+            }
             if (req.body != null) mutated = mutated.withBody(req.body)
             for ((name, value) in req.add_headers) mutated = mutated.withAddedHeader(name, value)
             for ((name, value) in req.update_headers) mutated = mutated.withUpdatedHeader(name, value)

@@ -258,7 +258,10 @@ data class ScanIssueFull(
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
-@Serializable data class SetConfigRequest(val json: String)
+@Serializable data class SetConfigRequest(val json: kotlinx.serialization.json.JsonElement) {
+    /** The spec documents an object, but a string was all that parsed; take either. */
+    fun text(): String = (json as? kotlinx.serialization.json.JsonPrimitive)?.takeIf { it.isString }?.content ?: json.toString()
+}
 @Serializable data class TaskEngineStateDto(val state: String)
 @Serializable data class SetTaskEngineStateRequest(val running: Boolean)
 
