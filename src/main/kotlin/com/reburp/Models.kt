@@ -105,6 +105,8 @@ data class SendHttp2Request(
     val host: String,
     val port: Int = 443,
     val use_https: Boolean = true,
+    /** Raw HTTP/1-style request, converted to HTTP/2; an alternative to pseudo_headers + headers + body. */
+    val request: String? = null,
     val pseudo_headers: Map<String, String> = emptyMap(),
     val headers: Map<String, String> = emptyMap(),
     val body: String = ""

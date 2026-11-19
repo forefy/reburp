@@ -116,7 +116,7 @@ tells you the current state ("Enable line wrapping" means it is off) without cli
 | Collaborator payload + poll (Pro) | `POST /api/collaborator/generate`, `GET /api/collaborator/poll/{secretKey}` |
 | Encode / decode / hash / JWT | `POST /api/utils/...` |
 | Rank history by how anomalous it looks | `POST /api/utils/rank` (body: `limit`, `offset`, `max_scored`, `scope_only`, `host`) |
-| Replay a history or ranked item | find it by `id` (`reburp.py history-item ID`), then `POST /api/http/send`; see below |
+| Replay a history or ranked item | `GET /api/proxy/history/by-id/{id}` (or `reburp.py history-item ID`), then `POST /api/http/send`; see below |
 | Send request to Repeater / Intruder | `POST /api/repeater/send`, `POST /api/intruder/send` (body: `raw_request`, optional `tab_name`) |
 | See the Burp window | `GET /api/ui/screenshot` (PNG; works while minimized or on another desktop) |
 | Switch tab (Burp's or an extension's sub-tab), click a button, pick a row | `GET /api/ui/tabs` (`nested` lists sub-tabs), `POST /api/ui/select-tab`, `POST /api/ui/click-button`, `POST /api/ui/select-row` |
@@ -126,10 +126,11 @@ Fuzzing, access-control diffs, JWT re-auth, the request engine, WebSockets and m
 are in `references/traffic.md`.
 
 **History ids are not indexes.** Rank results and history entries carry Burp's own `id`;
-`GET /api/proxy/history/{index}` takes a zero-based position in the current list. Never fetch
-`/api/proxy/history/<id>`. To replay item 287: `reburp.py history-item 287 --host <host>`, then
-`POST /api/http/send` with its `send_body` (`host`, `port`, `use_https`, raw `request`). reburp
-cannot replay by id alone.
+`GET /api/proxy/history/{index}` takes a zero-based position in the current list. Fetch by id
+with `GET /api/proxy/history/by-id/{id}`, never `/api/proxy/history/<id>`. To replay item 287:
+`reburp.py history-item 287` (or the by-id call), then `POST /api/http/send` with its `host`,
+`port`, `use_https` (the entry's `secure`) and raw `request`, which `history-item` prints as
+`send_body`. reburp cannot replay by id alone.
 
 ## Conventions
 

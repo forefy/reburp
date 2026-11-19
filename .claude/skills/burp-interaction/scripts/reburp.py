@@ -219,13 +219,30 @@ def cmd_call(args):
         sys.exit(1)
 
 
+def with_send_body(entry):
+    entry["send_body"] = {
+        "host": entry.get("host"),
+        "port": entry.get("port"),
+        "use_https": entry.get("secure"),
+        "request": entry.get("final_request") or entry.get("request"),
+    }
+    return entry
+
+
 def cmd_history_item(args):
     """Find a proxy history entry by Burp's message id.
 
     Rank results and history entries carry Burp's own `id`, but GET /api/proxy/history/{index}
-    takes a zero-based list position, so the two must not be mixed. This pages through the
-    history list (narrowed by --host when given) until the id turns up.
+    takes a zero-based list position, so the two must not be mixed. Uses
+    GET /api/proxy/history/by-id/{id}; on a reburp too old to have it, pages through the history
+    list (narrowed by --host when given) until the id turns up.
     """
+    status, _, raw = request("GET", f"/api/proxy/history/by-id/{args.id}")
+    if status == 200:
+        print(json.dumps(with_send_body(json.loads(raw)), indent=2))
+        return
+    if status == 404 and b"No proxy history entry" in raw:
+        sys.exit(f"No proxy history entry with id {args.id}")
     offset, page = 0, 1000
     while True:
         query = [("offset", offset), ("limit", page), ("include_body", "true"), ("max_body", 0)]
@@ -237,13 +254,7 @@ def cmd_history_item(args):
         entries = json.loads(raw)
         for entry in entries:
             if entry.get("id") == args.id:
-                entry["send_body"] = {
-                    "host": entry.get("host"),
-                    "port": entry.get("port"),
-                    "use_https": entry.get("secure"),
-                    "request": entry.get("final_request") or entry.get("request"),
-                }
-                print(json.dumps(entry, indent=2))
+                print(json.dumps(with_send_body(entry), indent=2))
                 return
         if len(entries) < page:
             where = f" for host {args.host}" if args.host else ""

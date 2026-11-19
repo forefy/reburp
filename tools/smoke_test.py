@@ -390,6 +390,26 @@ def main():
                     {"id": bar["id"], "text": "no-such-entry-zzz"}, expect=404)
             c.check_png("screenshot cropped to an element", f"/api/ui/screenshot?id={bar['id']}")
 
+    print("\nSend validation (no traffic leaves Burp)")
+    # A body with no pseudo-headers used to reach Burp as an empty request and come back 200
+    # with a null response. It is now refused before anything is sent.
+    c.check("HTTP/2 without :method and :path is a 400", "POST", "/api/http/send/http2",
+            {"host": "example.com"}, expect=400,
+            verify=lambda p: None if ":method" in (p or {}).get("error", "") else f"unhelpful error: {p}")
+    c.check("HTTP/2 raw request with no request line is a 400", "POST", "/api/http/send/http2",
+            {"host": "example.com", "request": "Host: example.com\r\n\r\n"}, expect=400)
+
+    print("\nHistory by id")
+    c.check("unknown id is a 404 that names the id", "GET", "/api/proxy/history/by-id/2147483647",
+            expect=404, verify=lambda p: None if "2147483647" in (p or {}).get("error", "") else f"got {p}")
+    c.check("index 404 points at by-id", "GET", "/api/proxy/history/2147483647", expect=404,
+            verify=lambda p: None if "by-id" in (p or {}).get("error", "") else f"no pointer: {p}")
+    first = c.call("GET", "/api/proxy/history?limit=1")[1]
+    if isinstance(first, list) and first and first[0].get("id", -1) >= 0:
+        wanted = first[0]["id"]
+        c.check("by-id returns the entry with that id", "GET", f"/api/proxy/history/by-id/{wanted}?include_body=false",
+                verify=lambda p, w=wanted: None if p.get("id") == w else f"asked {w}, got {p.get('id')}")
+
     print("\nShell (expected off)")
     c.check("shell status", "GET", "/api/utils/shell/status",
             verify=lambda p: None if "enabled" in p else "no enabled flag")

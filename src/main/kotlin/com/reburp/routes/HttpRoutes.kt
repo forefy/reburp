@@ -100,6 +100,12 @@ fun Routing.httpRoutes(api: MontoyaApi, activityLog: ActivityLogTab? = null) {
                         ErrorResponse("Failed to connect to ${req.host}:${req.port} - no response received")
                     )
                 }
+                if (rr.response() == null) {
+                    return@runCatching call.respond(
+                        HttpStatusCode.BadGateway,
+                        ErrorResponse("Sent to ${req.host}:${req.port} but no response came back (connection refused, reset or timed out)")
+                    )
+                }
                 val rawResp   = rr.response()?.toString()
                 val httpStatus = rr.response()?.statusCode()
                 val reqStr    = rr.request()?.toString() ?: rawRequest
@@ -144,7 +150,8 @@ fun Routing.httpRoutes(api: MontoyaApi, activityLog: ActivityLogTab? = null) {
                     val fallback = req.requests[i].request ?: ""
                     HttpSendResponse(
                         request = rr?.request()?.toString() ?: fallback,
-                        response = rr?.response()?.toString()
+                        response = rr?.response()?.toString(),
+                        status = rr?.response()?.statusCode()?.toInt()
                     )
                 }
                 call.respond(responses)
@@ -157,25 +164,29 @@ fun Routing.httpRoutes(api: MontoyaApi, activityLog: ActivityLogTab? = null) {
             val req = runCatching { call.receive<SendHttp2Request>() }.getOrElse {
                 return@post call.respond(HttpStatusCode.BadRequest, ErrorResponse("Invalid request body: ${it.message}"))
             }
+            if (req.host.isBlank()) return@post call.respond(HttpStatusCode.BadRequest, ErrorResponse("'host' is required"))
+            val parts = runCatching {
+                if (req.request != null) http2FromRaw(req.request, req.host, req.port, req.use_https)
+                else Http2Parts(
+                    http2PseudoHeaders(req.pseudo_headers, req.host, req.port, req.use_https) +
+                        req.headers.map { (k, v) -> k.lowercase() to v },
+                    req.body
+                )
+            }.getOrElse { return@post call.respond(HttpStatusCode.BadRequest, ErrorResponse(it.message ?: "Invalid HTTP/2 request")) }
             runCatching {
                 val service = httpService(req.host, req.port, req.use_https)
-                val pseudoHeaders = req.pseudo_headers.map { (k, v) ->
-                    val key = if (k.startsWith(":")) k else ":$k"
-                    HttpHeader.httpHeader(key.lowercase(), v)
-                }
-                val regularHeaders = req.headers.map { (k, v) -> HttpHeader.httpHeader(k.lowercase(), v) }
-                val httpReq = HttpRequest.http2Request(service, pseudoHeaders + regularHeaders, req.body)
+                val httpReq = HttpRequest.http2Request(service, parts.headers.map { (k, v) -> HttpHeader.httpHeader(k, v) }, parts.body)
                 val rr = api.http().sendRequest(httpReq, HttpMode.HTTP_2)
-                if (rr == null) {
-                    return@runCatching call.respond(
+                val resp = rr?.response()
+                    ?: return@runCatching call.respond(
                         HttpStatusCode.BadGateway,
-                        ErrorResponse("Failed to connect to ${req.host}:${req.port} - no response received")
+                        ErrorResponse("Sent to ${req.host}:${req.port} over HTTP/2 but no response came back (connection refused, reset, timed out, or no HTTP/2 support)")
                     )
-                }
                 call.respond(
                     HttpSendResponse(
                         request = rr.request()?.toString() ?: "",
-                        response = rr.response()?.toString()
+                        response = resp.toString(),
+                        status = resp.statusCode().toInt()
                     )
                 )
             }.onFailure { e ->
