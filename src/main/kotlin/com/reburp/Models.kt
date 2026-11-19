@@ -1001,7 +1001,7 @@ data class ChainStep(
     val body: String? = null,
     /** jsonpath or regex to extract from this step's response, e.g. "$.access" or "sessionid=([^;]+)" */
     val extract: Map<String, String> = emptyMap(),
-    /** variable name -> header name to inject into next step, e.g. {"token": "Authorization: Bearer {token}"} */
+    /** variable name -> header line to add to this step, e.g. {"token": "Authorization: Bearer {{token}}"} */
     val inject: Map<String, String> = emptyMap()
 )
 
@@ -1011,7 +1011,9 @@ data class GenerateChainRequest(
     val host: String,
     val port: Int = 443,
     val https: Boolean = true,
-    val steps: List<ChainStep>
+    val steps: List<ChainStep>,
+    /** Save the chain into Burp's Bambda library; false only returns the source. */
+    val import_to_library: Boolean = true
 )
 
 @Serializable

@@ -71,6 +71,28 @@ internal fun <T> onEdt(block: () -> T): T {
     return result!!.getOrThrow()
 }
 
+/**
+ * Find the target on the EDT, then perform the action as its own EDT event and wait for it only
+ * briefly. An action that opens a modal dialog (Burp's "Delete script?" and similar) does not
+ * return until the dialog closes; run inside invokeAndWait, that held the HTTP request open
+ * until a person answered the dialog. [prepare] returns the response and the action to run.
+ */
+internal fun actOnEdt(prepare: () -> Pair<UiActionResponse, () -> Unit>, settleMs: Long = 1500): UiActionResponse {
+    val (response, action) = onEdt(prepare)
+    val done = java.util.concurrent.CountDownLatch(1)
+    val failure = java.util.concurrent.atomic.AtomicReference<Throwable?>()
+    SwingUtilities.invokeLater {
+        try { action() } catch (t: Throwable) { failure.set(t) } finally { done.countDown() }
+    }
+    if (!done.await(settleMs, java.util.concurrent.TimeUnit.MILLISECONDS))
+        return response.copy(message = response.message + MODAL_NOTE)
+    failure.get()?.let { throw it }
+    return response
+}
+
+internal const val MODAL_NOTE =
+    "; it opened a dialog that is waiting for an answer. Find it with GET /api/ui/windows and click one of its buttons."
+
 internal suspend fun ApplicationCall.failFrom(e: Throwable) {
     val code = when (e) {
         is UiNotFound -> HttpStatusCode.NotFound
@@ -211,15 +233,16 @@ fun Routing.uiRoutes(api: MontoyaApi) {
             val frame = suiteFrame()
                 ?: return@post call.respond(HttpStatusCode.ServiceUnavailable, ErrorResponse("Burp UI frame not available"))
             runCatching {
-                onEdt {
+                actOnEdt({
                     val target = walk(frame).firstOrNull { matchesLabel(it, req.text) }
                         ?: throw UiNotFound("No visible, enabled button or tooltip matches '${req.text}'")
                     val label = (target as? AbstractButton)?.text?.takeIf { it.isNotBlank() }
                         ?: (target as? JComponent)?.toolTipText
-                    if (target is AbstractButton) target.doClick()
-                    else clickAt(target, target.width / 2, target.height / 2, "left", 1)
-                    UiActionResponse(true, "Clicked button", label)
-                }
+                    UiActionResponse(true, "Clicked button", label) to {
+                        if (target is AbstractButton) target.doClick()
+                        else clickAt(target, target.width / 2, target.height / 2, "left", 1)
+                    }
+                })
             }.onSuccess { call.respond(it) }.onFailure { call.failFrom(it) }
         }
 
