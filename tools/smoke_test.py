@@ -212,7 +212,9 @@ def _gradle_version():
 # HTTP work targets this reburp itself, so nothing leaves the machine unless --live names
 # a host. Anything that changes Burp's state is put back, and the few endpoints that leave
 # something behind the API cannot remove (Repeater, Intruder, Comparer, Organizer and
-# Decoder items, a site map entry, imported scripts) only run with --traces.
+# Decoder items, a site map entry, imported scripts) only run with --traces. Burp still
+# records the local sends in Logger, and its live passive crawl adds 127.0.0.1 to the site map;
+# delete that host from Target > Site map if it is in the way.
 # Never exercised: shutdown, unload with confirm, shell execution, clearing the activity
 # log or event buffer, clearing Repeater tabs or all match/replace rules, and proxy
 # intercept, which would hold the user's browser traffic.
