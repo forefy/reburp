@@ -277,6 +277,12 @@ def exercise_everything(c, args):
          "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"),
     ]:
         c.check(name, "POST", path, body, verify=equals("result", want))
+    c.check("digest takes SHA-256 as people write it", "POST", "/api/utils/digest",
+            {"algorithm": "sha-256", "value": "abc"},
+            verify=equals("result", "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"))
+    c.check("unknown digest lists every algorithm", "POST", "/api/utils/digest",
+            {"algorithm": "rot13", "value": "abc"}, expect=400,
+            verify=lambda p: None if "WHIRLPOOL" in (p or {}).get("error", "") else f"got {p}")
     c.check("random string has the asked length", "GET", "/api/utils/random?length=12",
             verify=lambda p: None if len(p.get("result", "")) == 12 else f"got {p}")
     packed = c.check("gzip compress", "POST", "/api/utils/compress",
@@ -315,6 +321,14 @@ def exercise_everything(c, args):
     c.check("update", "POST", "/api/utils/json/update",
             {"json": '{"a":1}', "pointer": "a", "value": '"x"'},
             verify=lambda p: None if json.loads(p["result"]) == {"a": "x"} else f"got {p}")
+    c.check("update with a bare string", "POST", "/api/utils/json/update",
+            {"json": '{"a":1}', "pointer": "a", "value": "x"},
+            verify=lambda p: None if json.loads(p["result"]) == {"a": "x"} else f"got {p}")
+    c.check("add honours type", "POST", "/api/utils/json/add",
+            {"json": '{}', "pointer": "n", "value": "42", "type": "STRING"},
+            verify=lambda p: None if json.loads(p["result"]) == {"n": "42"} else f"got {p}")
+    c.check("add rejects a value its type cannot hold", "POST", "/api/utils/json/add",
+            {"json": '{}', "pointer": "n", "value": "x", "type": "LONG"}, expect=400)
     c.check("remove", "POST", "/api/utils/json/remove",
             {"json": '{"a":1,"b":2}', "pointer": "a"},
             verify=lambda p: None if json.loads(p["result"]) == {"b": 2} else f"got {p}")
@@ -488,6 +502,7 @@ def exercise_everything(c, args):
     target = c.check("snapshot scope", "GET", "/api/config/project?section=target", verify=has("result"))
     if target:
         url = f"https://{jar}/"
+        c.check("scope change with no url is a 400", "POST", "/api/scope/include", {}, expect=400)
         c.check("include in scope", "POST", "/api/scope/include", {"url": url})
         c.check("now in scope", "GET", f"/api/scope/check?url={url}", verify=equals("in_scope", True))
         c.check("scope by query", "GET", f"/api/scope?url={url}", verify=equals("in_scope", True))

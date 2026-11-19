@@ -59,8 +59,8 @@ internal fun utilsSchemas(): String = """
         "properties": {
           "json":    { "type": "string", "description": "The JSON document as text" },
           "pointer": { "type": "string", "description": "Dotted path such as `user.roles.0.name`. This is Burp's syntax, not RFC 6901." },
-          "type":    { "type": "string", "enum": ["STRING", "BOOLEAN", "LONG", "DOUBLE", "RAW"], "default": "STRING", "description": "How to coerce the value on read. Ignored by add, update and remove." },
-          "value":   { "type": "string", "description": "JSON text to write. Required by add and update; string values must include their quotes." }
+          "type":    { "type": "string", "enum": ["STRING", "BOOLEAN", "LONG", "DOUBLE", "NULL", "RAW"], "description": "On read, how to coerce the value (STRING when omitted; NULL is not a read type). On add and update, how to write `value`: STRING quotes it, BOOLEAN, LONG and DOUBLE check and write it bare, NULL writes null, RAW writes it as JSON text. When omitted, a `value` that is valid JSON is written as-is and anything else as a string. Ignored by remove." },
+          "value":   { "type": "string", "description": "The value to write, read according to `type`. Required by add and update." }
         }
       },
 

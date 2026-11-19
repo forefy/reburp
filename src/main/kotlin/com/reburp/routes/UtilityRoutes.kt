@@ -139,12 +139,10 @@ fun Routing.utilityRoutes(api: MontoyaApi) {
                 return@post call.respond(HttpStatusCode.BadRequest, ErrorResponse("Invalid request body: ${it.message}"))
             }
             if (req.value.isBlank()) return@post call.respond(HttpStatusCode.BadRequest, ErrorResponse("'value' is required and must not be blank"))
-            val algo = runCatching { DigestAlgorithm.valueOf(req.algorithm.trim().uppercase()) }.getOrElse {
-                return@post call.respond(
-                    HttpStatusCode.BadRequest,
-                    ErrorResponse("Invalid 'algorithm': '${req.algorithm}'. Use one of: SHA_256, SHA_512, MD5, SHA3_256, BLAKE2B_256, KECCAK_256, SHA_1, SHA_384, SHA3_512, RIPEMD_160 ... (see /openapi.json for full list)")
-                )
-            }
+            val algo = digestAlgorithm(req.algorithm) ?: return@post call.respond(
+                HttpStatusCode.BadRequest,
+                ErrorResponse("Invalid 'algorithm': '${req.algorithm}'. Allowed values: ${DigestAlgorithm.values().joinToString(", ") { it.name }}")
+            )
             runCatching {
                 val montoyaBytes = burp.api.montoya.core.ByteArray.byteArray(req.value)
                 val digestBytes = api.utilities().cryptoUtils().generateDigest(montoyaBytes, algo).getBytes()
@@ -523,3 +521,13 @@ private val SECURITY_PAYLOADS = mapOf(
         "%E5%98%8A%E9%8D%8ESet-Cookie: crlftest=1"
     )
 )
+
+/**
+ * Montoya's DigestAlgorithm for a name as people write it. Only the exact constant used to work,
+ * so SHA256 and SHA-256 were refused while SHA_256 was accepted.
+ */
+internal fun digestAlgorithm(name: String): DigestAlgorithm? {
+    val upper = name.trim().uppercase().replace('-', '_').replace(' ', '_')
+    val split = upper.replace(Regex("""^([A-Z0-9]*[A-Z])(\d+)$"""), "$1_$2")
+    return listOf(upper, split).firstNotNullOfOrNull { n -> runCatching { DigestAlgorithm.valueOf(n) }.getOrNull() }
+}

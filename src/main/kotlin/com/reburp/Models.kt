@@ -72,8 +72,6 @@ data class AnnotateRequest(
 
 // ── Scope ─────────────────────────────────────────────────────────────────────
 
-@Serializable data class ScopeResult(val url: String, val in_scope: Boolean)
-@Serializable data class ScopeRequest(val url: String)
 
 // ── HTTP Send ─────────────────────────────────────────────────────────────────
 
