@@ -23,7 +23,8 @@ import kotlinx.serialization.json.*
 data class JsonPointerInput(
     val json: String,
     val pointer: String,
-    val type: String = "STRING",
+    /** Read: how to coerce (default STRING). Add/update: how to write `value` (see jsonLiteral). */
+    val type: String? = null,
     val value: String = ""
 )
 
@@ -63,6 +64,36 @@ data class JsonInspectResult(
 )
 
 private val READ_TYPES = listOf("STRING", "BOOLEAN", "LONG", "DOUBLE", "RAW")
+private val WRITE_TYPES = listOf("STRING", "BOOLEAN", "LONG", "DOUBLE", "NULL", "RAW")
+
+/**
+ * The JSON text add and update write. Burp's jsonUtils takes a JSON literal, so `type` used to be
+ * ignored and a bare "x" failed with "Error parsing json string". With a type the value is
+ * converted; without one, valid JSON is written as-is and anything else as a string.
+ */
+internal fun jsonLiteral(value: String, type: String?): String {
+    // kotlinx reads a bare word such as x as an unquoted literal, so check every primitive is
+    // a real JSON one: a quoted string, a number, true, false or null.
+    fun strict(e: JsonElement): Boolean = when (e) {
+        is JsonObject -> e.values.all(::strict)
+        is JsonArray -> e.all(::strict)
+        is JsonPrimitive -> e.isString || e.content in setOf("true", "false", "null") || e.content.toDoubleOrNull() != null
+    }
+    fun isJson(v: String) = runCatching { strict(Json.parseToJsonElement(v)) }.getOrDefault(false)
+    val v = value.trim()
+    return when (type?.trim()?.uppercase()) {
+        null, "" -> if (isJson(value)) value else JsonPrimitive(value).toString()
+        "STRING" -> JsonPrimitive(value).toString()
+        "BOOLEAN" -> v.lowercase().takeIf { it == "true" || it == "false" }
+            ?: throw IllegalArgumentException("'$value' is not true or false")
+        "LONG" -> v.toLongOrNull()?.toString() ?: throw IllegalArgumentException("'$value' is not a whole number")
+        "DOUBLE" -> v.takeIf { it.toDoubleOrNull()?.isFinite() == true }
+            ?: throw IllegalArgumentException("'$value' is not a number")
+        "NULL" -> "null"
+        "RAW" -> value.takeIf(::isJson) ?: throw IllegalArgumentException("'$value' is not valid JSON")
+        else -> throw IllegalArgumentException("Invalid 'type': '$type'. Allowed values: ${WRITE_TYPES.joinToString(", ")}")
+    }
+}
 
 /** Describes a JsonNode's concrete kind for API responses. */
 private fun kindOf(node: JsonNode): String = when {
@@ -137,7 +168,7 @@ fun Routing.jsonRoutes(api: MontoyaApi) {
             val req = runCatching { call.receive<JsonPointerInput>() }.getOrElse {
                 return@post call.respond(HttpStatusCode.BadRequest, ErrorResponse("Invalid request body: ${it.message}"))
             }
-            val type = req.type.trim().uppercase()
+            val type = (req.type ?: "STRING").trim().uppercase()
             if (type !in READ_TYPES) {
                 return@post call.respond(HttpStatusCode.BadRequest,
                     ErrorResponse("Invalid 'type': '${req.type}'. Allowed values: ${READ_TYPES.joinToString(", ")}"))
@@ -163,7 +194,10 @@ fun Routing.jsonRoutes(api: MontoyaApi) {
             val req = runCatching { call.receive<JsonPointerInput>() }.getOrElse {
                 return@post call.respond(HttpStatusCode.BadRequest, ErrorResponse("Invalid request body: ${it.message}"))
             }
-            runCatching { api.utilities().jsonUtils().add(req.json, req.pointer, req.value) }
+            val literal = runCatching { jsonLiteral(req.value, req.type) }.getOrElse {
+                return@post call.respond(HttpStatusCode.BadRequest, ErrorResponse(it.message ?: "Bad value"))
+            }
+            runCatching { api.utilities().jsonUtils().add(req.json, req.pointer, literal) }
                 .onSuccess { call.respond(StringResult(it)) }
                 .onFailure { call.respond(HttpStatusCode.BadRequest, ErrorResponse("Add failed at pointer '${req.pointer}': ${it.message}")) }
         }
@@ -173,7 +207,10 @@ fun Routing.jsonRoutes(api: MontoyaApi) {
             val req = runCatching { call.receive<JsonPointerInput>() }.getOrElse {
                 return@post call.respond(HttpStatusCode.BadRequest, ErrorResponse("Invalid request body: ${it.message}"))
             }
-            runCatching { api.utilities().jsonUtils().update(req.json, req.pointer, req.value) }
+            val literal = runCatching { jsonLiteral(req.value, req.type) }.getOrElse {
+                return@post call.respond(HttpStatusCode.BadRequest, ErrorResponse(it.message ?: "Bad value"))
+            }
+            runCatching { api.utilities().jsonUtils().update(req.json, req.pointer, literal) }
                 .onSuccess { call.respond(StringResult(it)) }
                 .onFailure { call.respond(HttpStatusCode.BadRequest, ErrorResponse("Update failed at pointer '${req.pointer}': ${it.message}")) }
         }

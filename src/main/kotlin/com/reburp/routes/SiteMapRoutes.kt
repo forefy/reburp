@@ -97,47 +97,4 @@ fun Routing.siteMapRoutes(api: MontoyaApi) {
             }.onFailure { call.respond(HttpStatusCode.InternalServerError, ErrorResponse(it.message ?: "Error listing issues")) }
         }
     }
-
-    route("/api/scope") {
-
-        get("") {
-            val url = call.request.queryParameters["url"]
-                ?: return@get call.respond(HttpStatusCode.BadRequest, ErrorResponse("'url' parameter required"))
-            call.respond(ScopeResult(url = url, in_scope = api.scope().isInScope(url)))
-        }
-
-        post("/include") {
-            val req = runCatching { call.receive<ScopeRequest>() }.getOrElse {
-                return@post call.respond(HttpStatusCode.BadRequest, ErrorResponse(it.message ?: "Bad request body"))
-            }
-            api.scope().includeInScope(req.url)
-            call.respond(MessageResponse("Added to scope: ${req.url}"))
-        }
-
-        // The spec has always documented POST and DELETE on /api/scope itself; they answered
-        // 405 until these aliases of /include and /exclude were added.
-        post("") {
-            val req = runCatching { call.receive<ScopeRequest>() }.getOrElse {
-                return@post call.respond(HttpStatusCode.BadRequest, ErrorResponse(it.message ?: "Bad request body"))
-            }
-            api.scope().includeInScope(req.url)
-            call.respond(MessageResponse("Added to scope: ${req.url}"))
-        }
-
-        delete("") {
-            val req = runCatching { call.receive<ScopeRequest>() }.getOrElse {
-                return@delete call.respond(HttpStatusCode.BadRequest, ErrorResponse(it.message ?: "Bad request body"))
-            }
-            api.scope().excludeFromScope(req.url)
-            call.respond(MessageResponse("Excluded from scope: ${req.url}"))
-        }
-
-        post("/exclude") {
-            val req = runCatching { call.receive<ScopeRequest>() }.getOrElse {
-                return@post call.respond(HttpStatusCode.BadRequest, ErrorResponse(it.message ?: "Bad request body"))
-            }
-            api.scope().excludeFromScope(req.url)
-            call.respond(MessageResponse("Excluded from scope: ${req.url}"))
-        }
-    }
 }

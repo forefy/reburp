@@ -511,7 +511,7 @@ fun openApiJson(): String = """
             "description": "OK",
             "content": {
               "application/json": {
-                "schema": { "${'$'}ref": "#/components/schemas/ScopeResult" }
+                "schema": { "${'$'}ref": "#/components/schemas/ScopeCheckResult" }
               }
             }
           },
@@ -528,7 +528,7 @@ fun openApiJson(): String = """
           "required": true,
           "content": {
             "application/json": {
-              "schema": { "${'$'}ref": "#/components/schemas/ScopeRequest" },
+              "schema": { "${'$'}ref": "#/components/schemas/ScopeUrlRequest" },
               "example": { "url": "https://example.com/" }
             }
           }
@@ -555,7 +555,7 @@ fun openApiJson(): String = """
           "required": true,
           "content": {
             "application/json": {
-              "schema": { "${'$'}ref": "#/components/schemas/ScopeRequest" },
+              "schema": { "${'$'}ref": "#/components/schemas/ScopeUrlRequest" },
               "example": { "url": "https://example.com/" }
             }
           }
@@ -2094,7 +2094,7 @@ fun openApiJson(): String = """
       "post": {
         "tags": ["Utilities"],
         "summary": "Compute cryptographic digest",
-        "description": "**[Montoya API]** Computes a cryptographic digest using Burp's Montoya CryptoUtils. Returns a lowercase hex string.\n\nSupported algorithms: SHA_256, SHA_512, MD5, SHA3_256, SHA3_512, BLAKE2B_256, BLAKE3_256, KECCAK_256, SHA_1, SHA_384, RIPEMD_160, WHIRLPOOL, TIGER, SM3.",
+        "description": "**[Montoya API]** Computes a cryptographic digest using Burp's Montoya CryptoUtils. Returns a lowercase hex string.\n\nSupported algorithms: SHA_256, SHA_512, MD5, SHA3_256, SHA3_512, BLAKE2B_256, BLAKE3_256, KECCAK_256, SHA_1, SHA_384, RIPEMD_160, WHIRLPOOL, TIGER, SM3. Case does not matter, and common spellings such as SHA256, sha-256 and SHA3-256 are accepted; an unknown name is a 400 that lists every Montoya algorithm.",
         "operationId": "computeDigest",
         "x-api-source": "montoya",
         "requestBody": {
@@ -3411,24 +3411,6 @@ ${extraPaths()}
         "required": ["enabled"],
         "properties": {
           "enabled": { "type": "boolean", "description": "true to enable intercept, false to disable" }
-        }
-      },
-
-      "ScopeResult": {
-        "type": "object",
-        "description": "Result of a scope check",
-        "properties": {
-          "url":      { "type": "string" },
-          "in_scope": { "type": "boolean" }
-        }
-      },
-
-      "ScopeRequest": {
-        "type": "object",
-        "description": "URL to add or remove from scope",
-        "required": ["url"],
-        "properties": {
-          "url": { "type": "string", "description": "Full URL or prefix to add/remove from Burp's target scope" }
         }
       },
 
