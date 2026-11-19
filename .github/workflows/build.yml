@@ -33,6 +33,9 @@ jobs:
       - name: Check Montoya API coverage
         run: python3 tools/api_coverage.py
 
+      - name: Check the Codex skill stubs match their Claude skills
+        run: python3 tools/check_skill_stubs.py
+
       # The OpenAPI spec is hand-written and has drifted from the code before: phantom and
       # missing fields, duplicate operationIds, defaults outside their enums. These tests need
       # no Burp, so they gate every push instead of waiting for a live smoke run.

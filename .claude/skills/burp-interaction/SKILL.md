@@ -13,11 +13,31 @@ Prefer these endpoints over describing manual clicks in the Burp UI.
 
 1. Confirm the server is up: `GET /api/status`. If it refuses to connect, reburp is not
    loaded - see **Install reburp** below and guide the user through it, then retry.
-2. Read the live contract instead of guessing endpoint shapes: `GET /openapi.json`, or open
-   `http://127.0.0.1:9090/docs` for Swagger UI. Endpoint names below can drift; the spec is truth.
-3. You only need a browser for traffic that must go *through the proxy* (real or authenticated
+2. Read the live contract instead of guessing endpoint shapes; see **Finding endpoints** below.
+   Endpoint names in this file can drift; the spec is truth.
+3. `edition` in the status says whether Pro-only groups (Scanner, Collaborator, AI) will work.
+4. You only need a browser for traffic that must go *through the proxy* (real or authenticated
    sessions). Pure API work - sending requests, scope, scans - needs no browser. If you do need
    one, see **Capturing browser traffic** below.
+
+## Finding endpoints
+
+The live spec at `GET /openapi.json` is the contract, but it is about 400 KB; do not read it
+whole. `scripts/reburp.py` in this skill folder (Python 3, standard library only) reads it for you:
+
+```bash
+R=<this skill folder>/scripts/reburp.py
+$R status                             # is reburp up, which build
+$R endpoints --tag Proxy              # one group, one line per endpoint with its fields
+$R endpoints --grep 'websocket|jwt'   # search paths, summaries and field names
+$R describe POST /api/http/send       # one endpoint's full contract, $refs resolved
+$R call POST /api/http/send -d '{"host":"example.com","method":"GET","path":"/"}'
+$R call GET /api/ui/screenshot -o /tmp/burp.png   # non-JSON bodies need -o
+$R history-item 287 --host example.com            # a history entry by Burp's id, ready to replay
+```
+
+`call` exits non-zero on an HTTP error. Plain `curl` works just as well; set `REBURP_URL` for
+the script if the port was changed. Swagger UI is at `http://127.0.0.1:9090/docs`.
 
 ## Install reburp
 
@@ -57,35 +77,12 @@ process id changed before trusting the next load. Do not drive the Loaded checkb
 
 ## Capturing browser traffic
 
-Only when the task needs real proxied traffic. Confirm whatever you pick is working by watching
-`GET /api/proxy/history` grow. Prefer what is already set up, in this order:
+Only needed when the task needs real proxied traffic (logged-in sessions, a real browser). Check
+`GET /api/proxy/history` for the target host first; if it is not there, follow
+`references/browser-traffic.md`, which ranks the options from "already flowing" to a throwaway
+Chromium you can drive yourself.
 
-1. **Already flowing?** If `/api/proxy/history` shows the target host, you are done.
-2. **The user's own browser**, if they already run it through Burp (their normal setup - system
-   proxy or a proxy-switcher like FoxyProxy, with Burp's CA trusted). Ask them to browse; you
-   watch history.
-3. **Burp's pre-wired browser** (Proxy -> Open browser; a local Chromium called **Burp Browser**):
-   zero config - auto-proxied and already trusts Burp's CA. The user drives it; you cannot - it is
-   a browser (read-only to desktop control) and its remote-debugging port is token-locked.
-4. **Fallback that always works for *you* to drive.** Launch a Chromium-based browser (Chrome,
-   Edge, or Brave - whatever the machine has) as a *separate* instance pointed at the target URL,
-   with these launch flags. It needs none of the blocked steps below, so use it whenever the user
-   is unsure or a setup is not routing:
-   - `--user-data-dir=<a fresh temp dir>` - a throwaway profile, so it never touches the user's own
-   - `--proxy-server=http://127.0.0.1:8080` - route everything through Burp
-   - `--ignore-certificate-errors` - accept Burp's interception cert with no CA install
-   - `--remote-debugging-port=<port>` - so you can drive it over CDP
-   - `--no-first-run --no-default-browser-check`
-
-   Find the browser's executable for the host OS (macOS: under `/Applications`; Windows: under
-   `Program Files` or `%LOCALAPPDATA%`; Linux: `google-chrome` / `chromium` on `$PATH`), and quote
-   the path if it has spaces. Then drive it over CDP: `GET http://127.0.0.1:<port>/json` for the
-   page target's `webSocketDebuggerUrl`, then `Page.navigate` / `Runtime.evaluate`. Confirm
-   `/api/proxy/history` grows; close the instance when done.
-
-You **cannot**, in any browser: install extensions (the Chrome Web Store blocks all automation),
-trust Burp's CA (needs the user's password), or click/type via desktop control (browsers are
-read-only there). Don't burn turns on these - go to the fallback instead.
+## Seeing and driving Burp's window
 
 When you do need to *see* Burp (confirm a Collaborator hit, show the user a Repeater result),
 skip desktop screenshots and use `/api/ui`: `select-tab`, then `select-row` with `{"last": true}`,
@@ -119,16 +116,41 @@ tells you the current state ("Enable line wrapping" means it is off) without cli
 | Collaborator payload + poll (Pro) | `POST /api/collaborator/generate`, `GET /api/collaborator/poll/{secretKey}` |
 | Encode / decode / hash / JWT | `POST /api/utils/...` |
 | Rank history by how anomalous it looks | `POST /api/utils/rank` (body: `limit`, `offset`, `max_scored`, `scope_only`, `host`) |
-| Send request to Repeater / Intruder | `POST /api/repeater/send`, `POST /api/intruder/send` |
+| Replay a history or ranked item | find it by `id` (`reburp.py history-item ID`), then `POST /api/http/send`; see below |
+| Send request to Repeater / Intruder | `POST /api/repeater/send`, `POST /api/intruder/send` (body: `raw_request`, optional `tab_name`) |
 | See the Burp window | `GET /api/ui/screenshot` (PNG; works while minimized or on another desktop) |
 | Switch tab (Burp's or an extension's sub-tab), click a button, pick a row | `GET /api/ui/tabs` (`nested` lists sub-tabs), `POST /api/ui/select-tab`, `POST /api/ui/click-button`, `POST /api/ui/select-row` |
 | Drive any other element: combo, text field, list, tree, dialog, context menu | `GET /api/ui/elements?text=...` for ids, then `POST /api/ui/click`, `/type`, `/select`, `/key`; `GET /api/ui/windows` for dialogs and popups |
 
+Fuzzing, access-control diffs, JWT re-auth, the request engine, WebSockets and match-and-replace
+are in `references/traffic.md`.
+
+**History ids are not indexes.** Rank results and history entries carry Burp's own `id`;
+`GET /api/proxy/history/{index}` takes a zero-based position in the current list. Never fetch
+`/api/proxy/history/<id>`. To replay item 287: `reburp.py history-item 287 --host <host>`, then
+`POST /api/http/send` with its `send_body` (`host`, `port`, `use_https`, raw `request`). reburp
+cannot replay by id alone.
+
 ## Conventions
 
-- All bodies and responses are JSON. Errors are `{ "error": "..." }` with a 4xx/5xx status.
-- Pro-only groups (scanner, collaborator) return `403` on Community edition with a message.
-- Every REST call is mirrored in Burp's **reburp** suite tab, so the user can watch what you do.
+- All bodies and responses are JSON. Errors are `{ "error": "..." }` with a 4xx/5xx status, so
+  check the status, not just the body.
+- Targets are `host` + `port` (default `443`) + `use_https` (default `true`), not a URL. A few
+  newer endpoints spell the flag `https` or `secure`; check the field list.
+- Requests go either as a raw `request` string (CRLF normalised for you) or as structured
+  `method` + `path` + `headers` + `body`; with structured fields `body` may be a JSON object and
+  `Host`, `Content-Type` and `Content-Length` are filled in.
+- Lists page with `offset` and `limit` and omit bodies unless `include_body=true`; `max_body`
+  caps each body at 512 KB by default. History indexes shift as traffic arrives, so re-read the
+  list right before acting on one.
+- Enum values are upper-case Montoya names (`HIGH`, `GREEN`). `GET /api/meta/enums` lists them
+  with Burp's display labels.
+- Handles (`engine_id`, scan task ids, websocket ids, session ids) live in extension memory and
+  die with a reload; nothing is retried for you.
+- Pro-only groups (scanner, collaborator, AI) return `403` on Community edition with a message.
+- Every REST call is mirrored in Burp's **reburp** suite tab and in `GET /api/log`, so the user
+  can watch what you do. `POST /api/session` with a label, then `session_id` on later calls,
+  groups a run.
 
 ## Safety
 
@@ -137,5 +159,9 @@ tells you the current state ("Enable line wrapping" means it is off) without cli
   It returns `403` unless the user set `REBURP_ENABLE_SHELL=1` in Burp's environment. Do not
   ask the user to enable it unless the task genuinely needs local command execution, and say
   what you will run first.
+- `POST /api/burp/shutdown` and `POST /api/meta/extension/unload` stop Burp or the API. Never
+  call them to "reset" something.
 - Only drive scans and requests against targets the user has confirmed are in scope for their
-  engagement.
+  engagement. Active audits, `discover-content` and fuzzing send attack traffic.
+- Undo any match-and-replace or session rule you add once the task is done; those settings
+  outlive your session.
