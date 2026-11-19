@@ -580,6 +580,18 @@ def exercise_everything(c, args):
     c.check("WebSocket connect to a non-WebSocket endpoint fails cleanly", "POST", "/api/websocket/connect",
             {**local, "path": "/api/status"}, expect=502, tolerate=(400, 500))
     c.check("intercept state explains itself", "GET", "/api/proxy/intercept", verify=has("note"))
+    # Row clicks are only exercised on their refusals here, so nothing in Burp is clicked.
+    status, ui = c.call("GET", "/api/ui/elements?visible_only=true")
+    if status == 200:
+        els = ui.get("elements", [])
+        rowed = next((e["id"] for e in els if e.get("type") in ("JTree", "JTable", "JList")), None)
+        tabs = next((e["id"] for e in els if e.get("type") == "JTabbedPane"), None)
+        if rowed:
+            c.check("row click on a missing label is a 404", "POST", "/api/ui/click",
+                    {"id": rowed, "row_text": "reburp-smoke-no-such-row"}, expect=404)
+        if tabs:
+            c.check("row click on something without rows is a 400", "POST", "/api/ui/click",
+                    {"id": tabs, "row": 0}, expect=400)
     for m, suffix, body in [("POST", "/send-text", {"message": "x"}),
                             ("POST", "/send-binary", {"base64": "eA=="}),
                             ("GET", "/messages", None), ("DELETE", "", None)]:
