@@ -143,6 +143,69 @@ fun normalizeRequest(raw: String): String {
     return lines.joinToString("\r\n") + "\r\n\r\n" + body
 }
 
+// ── HTTP/2 helpers ────────────────────────────────────────────────────────────
+
+/** Headers that only mean something on an HTTP/1 connection; HTTP/2 forbids them. */
+private val HTTP1_ONLY_HEADERS = setOf("host", "connection", "keep-alive", "proxy-connection", "transfer-encoding", "upgrade")
+
+/**
+ * Complete an HTTP/2 request's pseudo-headers. `:method` and `:path` must be given; `:scheme` and
+ * `:authority` default from the target. Keys are lower-cased and gain a leading colon if missing.
+ * Without this, a body with no pseudo-headers went to Burp as an empty request and the endpoint
+ * answered 200 with a null response.
+ */
+fun http2PseudoHeaders(given: Map<String, String>, host: String, port: Int, useHttps: Boolean): List<Pair<String, String>> {
+    val headers = LinkedHashMap<String, String>()
+    for ((k, v) in given) headers[(if (k.startsWith(":")) k else ":$k").lowercase()] = v
+    val missing = listOf(":method", ":path").filter { headers[it].isNullOrBlank() }
+    require(missing.isEmpty()) {
+        "HTTP/2 needs ${missing.joinToString(" and ")} in 'pseudo_headers', or pass the whole request as a raw 'request' string"
+    }
+    headers.putIfAbsent(":scheme", if (useHttps) "https" else "http")
+    val defaultPort = if (useHttps) 443 else 80
+    headers.putIfAbsent(":authority", if (port == defaultPort) host else "$host:$port")
+    val order = listOf(":method", ":scheme", ":authority", ":path")
+    return order.mapNotNull { k -> headers[k]?.let { k to it } } + headers.filterKeys { it !in order }.toList()
+}
+
+/** An HTTP/2 request split into header pairs (pseudo-headers first) and a body. */
+data class Http2Parts(val headers: List<Pair<String, String>>, val body: String)
+
+/**
+ * Turn a raw HTTP/1-style request ("GET /path HTTP/1.1\r\nHost: ...") into HTTP/2 parts: the
+ * request line becomes `:method` and `:path`, Host becomes `:authority`, connection-only headers
+ * are dropped and names are lower-cased. The version on the request line is ignored.
+ */
+fun http2FromRaw(raw: String, host: String, port: Int, useHttps: Boolean): Http2Parts {
+    val normalized = normalizeRequest(raw)
+    val sep = normalized.indexOf("\r\n\r\n")
+    val head = if (sep >= 0) normalized.substring(0, sep) else normalized.trimEnd()
+    val body = if (sep >= 0) normalized.substring(sep + 4) else ""
+    val lines = head.split("\r\n")
+    val requestLine = lines.first().trim().split(Regex("\\s+"))
+    val looksLikeRequestLine = requestLine.size >= 2 &&
+        requestLine[0].matches(Regex("[A-Za-z]+")) &&
+        (requestLine[1].startsWith("/") || requestLine[1] == "*" || requestLine[1].startsWith("http://") || requestLine[1].startsWith("https://"))
+    require(looksLikeRequestLine) { "'request' must start with a request line such as 'GET /path HTTP/1.1'" }
+    var authority: String? = null
+    val regular = mutableListOf<Pair<String, String>>()
+    for (line in lines.drop(1)) {
+        val colon = line.indexOf(':')
+        if (colon <= 0) continue
+        val name = line.substring(0, colon).trim().lowercase()
+        val value = line.substring(colon + 1).trim()
+        when {
+            name == "host" -> authority = value
+            name in HTTP1_ONLY_HEADERS -> {}
+            name == "content-length" && body.isEmpty() -> {}
+            else -> regular += name to value
+        }
+    }
+    val pseudo = mutableMapOf(":method" to requestLine[0], ":path" to requestLine[1])
+    if (authority != null) pseudo[":authority"] = authority
+    return Http2Parts(http2PseudoHeaders(pseudo, host, port, useHttps) + regular, body)
+}
+
 // ── Utility helpers ───────────────────────────────────────────────────────────
 
 fun diffLines(a: String, b: String): String {

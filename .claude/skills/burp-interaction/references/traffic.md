@@ -41,9 +41,8 @@ target in scope is what makes `scope_only=true` filters and Burp's own tooling b
 `GET /api/proxy/history/{index}` takes a zero-based position in the current list, so
 `/api/proxy/history/287` is the 288th entry, not id 287. To replay a ranked item:
 
-1. Find it by id: `scripts/reburp.py history-item 287 --host app.example.test`, or page
-   `GET /api/proxy/history?host=app.example.test&include_body=true` and pick the entry whose
-   `id` matches.
+1. Find it by id: `GET /api/proxy/history/by-id/287`, or `scripts/reburp.py history-item 287`,
+   which also prints the body for step 2.
 2. Send its raw request: `POST /api/http/send` with `host`, `port`, `use_https` (the entry's
    `secure`) and `request` (the entry's `final_request`, or `request`). `history-item` prints
    this as `send_body`. reburp cannot replay by id alone, and a body without `host` is a 400.
@@ -54,8 +53,12 @@ target in scope is what makes `scope_only=true` filters and Burp's own tooling b
   uses Burp's TLS, upstream proxies and cookie jar). Raw `request` string or structured
   `method`/`path`/`headers`/`body`. `redirect_mode` is `ALWAYS|NEVER|SAME_HOST|IN_SCOPE`. A failed
   connection is `502`, not an exception.
-- `POST /api/http/send/http2` - explicit HTTP/2 with `pseudo_headers`.
-- `POST /api/http/send-batch` - up to 20 concurrent, ordered results.
+- `POST /api/http/send/http2` - forces HTTP/2. Give a raw `request` (converted for you: the
+  request line becomes `:method`/`:path`, Host becomes `:authority`) or `pseudo_headers` with at
+  least `:method` and `:path`. `POST /api/http/send` already negotiates HTTP/2 when the server
+  offers it, so use this only to force the protocol.
+- `POST /api/http/send-batch` - up to 20 concurrent, ordered results, each with its `status`
+  (null when that request got no response).
 - `POST /api/http/send-with-auth` - for JWT APIs: on `401`/`403` it runs the `auth` request, pulls
   the token with `token_path` (e.g. `$.access`), injects it per `inject_as` and retries. Prefer it
   over hand-rolling token refresh.

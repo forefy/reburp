@@ -80,8 +80,22 @@ fun Routing.proxyRoutes(api: MontoyaApi) {
             val includeBody = call.request.queryParameters["include_body"]?.toBooleanStrictOrNull() ?: true
             val history = api.proxy().history()
             if (index < 0 || index >= history.size)
-                return@get call.respond(HttpStatusCode.NotFound, ErrorResponse("Index $index out of range (history size: ${history.size})"))
+                return@get call.respond(HttpStatusCode.NotFound, ErrorResponse(
+                    "Index $index out of range (history size: ${history.size}). This takes a zero-based list position; " +
+                        "for Burp's message id, as rank and history listings report it, use /api/proxy/history/by-id/{id}"
+                ))
             call.respond(history[index].toProxyEntryDto(includeBody))
+        }
+
+        // Rank results and history listings report Burp's message id, which is not a list
+        // position, so give it its own lookup rather than letting callers page for it.
+        get("/history/by-id/{id}") {
+            val id = call.parameters["id"]?.toIntOrNull()
+                ?: return@get call.respond(HttpStatusCode.BadRequest, ErrorResponse("'id' must be an integer"))
+            val includeBody = call.request.queryParameters["include_body"]?.toBooleanStrictOrNull() ?: true
+            val entry = api.proxy().history().firstOrNull { runCatching { it.id() }.getOrNull() == id }
+                ?: return@get call.respond(HttpStatusCode.NotFound, ErrorResponse("No proxy history entry with id $id"))
+            call.respond(entry.toProxyEntryDto(includeBody))
         }
 
         patch("/history/annotate") {

@@ -112,6 +112,25 @@ fun openApiJson(): String = """
       }
     },
 
+    "/api/proxy/history/by-id/{id}": {
+      "get": {
+        "tags": ["Proxy"],
+        "summary": "Get proxy history item by Burp's id",
+        "description": "**[Montoya API]** Returns full request and response for the proxy history item whose Burp message `id` matches, the id that rank results and history listings report. Use this, not `/api/proxy/history/{index}`, which takes a zero-based list position. Its `host`, `port`, `secure` and `request` (or `final_request`) are what `POST /api/http/send` needs to replay it.",
+        "operationId": "getProxyHistoryItemById",
+        "x-api-source": "montoya",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" }, "description": "Burp's message id of the history item" },
+          { "name": "include_body", "in": "query", "required": false, "schema": { "type": "boolean", "default": true }, "description": "Include request/response bodies" }
+        ],
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "${'$'}ref": "#/components/schemas/ProxyEntry" } } } },
+          "400": { "${'$'}ref": "#/components/responses/BadRequest" },
+          "404": { "${'$'}ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+
     "/api/proxy/history/search": {
       "get": {
         "tags": ["Proxy"],
@@ -604,7 +623,7 @@ fun openApiJson(): String = """
           },
           "400": { "${'$'}ref": "#/components/responses/BadRequest" },
           "502": {
-            "description": "Failed to connect to target host",
+            "description": "No response from the target: connection refused, reset or timed out",
             "content": {
               "application/json": {
                 "schema": { "${'$'}ref": "#/components/schemas/ErrorResponse" }
@@ -690,7 +709,7 @@ fun openApiJson(): String = """
       "post": {
         "tags": ["HTTP"],
         "summary": "Send HTTP/2 request",
-        "description": "**[Montoya API]** Issues an HTTP/2 request with explicit pseudo-headers and headers through Burp's HTTP engine.",
+        "description": "**[Montoya API]** Issues an HTTP/2 request through Burp's HTTP engine. Give either a raw `request` string (an HTTP/1-style request; its request line becomes `:method` and `:path`, Host becomes `:authority`, and connection-only headers are dropped) or `pseudo_headers` with at least `:method` and `:path` plus optional `headers` and `body`. Missing `:scheme` and `:authority` are filled in from the target. A request with neither is a 400, and a request Burp sent but got no response for is a 502.",
         "operationId": "sendHttp2",
         "x-api-source": "montoya",
         "requestBody": {
@@ -719,7 +738,7 @@ fun openApiJson(): String = """
             }
           },
           "400": { "${'$'}ref": "#/components/responses/BadRequest" },
-          "502": { "description": "Failed to connect to target host", "content": { "application/json": { "schema": { "${'$'}ref": "#/components/schemas/ErrorResponse" } } } }
+          "502": { "description": "No response from the target: connection refused, reset or timed out, or no HTTP/2 support", "content": { "application/json": { "schema": { "${'$'}ref": "#/components/schemas/ErrorResponse" } } } }
         }
       }
     },
@@ -3433,12 +3452,13 @@ ${extraPaths()}
       "SendHttp2Request": {
         "type": "object",
         "description": "HTTP/2 request to send through Burp's HTTP engine",
-        "required": ["host", "pseudo_headers"],
+        "required": ["host"],
         "properties": {
           "host":           { "type": "string" },
           "port":           { "type": "integer", "default": 443 },
           "use_https":      { "type": "boolean", "default": true },
-          "pseudo_headers": { "type": "object", "additionalProperties": { "type": "string" }, "description": "HTTP/2 pseudo-headers: :method, :path, :scheme, :authority" },
+          "request":        { "type": "string", "nullable": true, "description": "Raw HTTP/1-style request to send as HTTP/2, instead of pseudo_headers, headers and body" },
+          "pseudo_headers": { "type": "object", "additionalProperties": { "type": "string" }, "description": "HTTP/2 pseudo-headers. :method and :path are required when no raw request is given; :scheme and :authority default from the target" },
           "headers":        { "type": "object", "additionalProperties": { "type": "string" }, "description": "Regular HTTP/2 headers" },
           "body":           { "type": "string", "description": "Request body (optional)" }
         }
