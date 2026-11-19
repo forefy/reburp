@@ -6,6 +6,8 @@ Small stdlib-only client for the reburp REST API (Burp Suite on http://127.0.0.1
     reburp.py endpoints [--tag T] [--grep RE]    compact endpoint list from the live spec
     reburp.py describe METHOD PATH               full contract of one operation, $refs resolved
     reburp.py call METHOD PATH [-q k=v ...] [-d JSON | -d @file | -d -] [-o out.png]
+    reburp.py history-item ID [--host H]         one proxy history entry by Burp's id, with a
+                                                 ready-to-send body for POST /api/http/send
 
 Set REBURP_URL to reach a non-default port. Exit status is 1 on HTTP errors or no connection.
 """
@@ -22,10 +24,8 @@ import urllib.request
 BASE = os.environ.get("REBURP_URL", "http://127.0.0.1:9090").rstrip("/")
 METHODS = ("get", "post", "put", "patch", "delete")
 HEADER = (
-    "# reburp endpoint reference\n\n"
-    "Generated from the OpenAPI spec (`GET /openapi.json`) of reburp {version}. The live spec is the source "
-    "of truth; refresh this file with `python3 .codex/skills/reburp-api/scripts/reburp.py endpoints > "
-    ".codex/skills/reburp-api/references/endpoints.md` while Burp is running.\n\n"
+    "# reburp endpoints\n\n"
+    "Read live from the OpenAPI spec (`GET /openapi.json`) of reburp {version}.\n\n"
     "Notation: `*` marks a required field, `=x` is the default, `a|b` is an enum. `body:object` fields take a "
     "JSON object (sent as JSON) or a string.\n"
 )
@@ -219,6 +219,38 @@ def cmd_call(args):
         sys.exit(1)
 
 
+def cmd_history_item(args):
+    """Find a proxy history entry by Burp's message id.
+
+    Rank results and history entries carry Burp's own `id`, but GET /api/proxy/history/{index}
+    takes a zero-based list position, so the two must not be mixed. This pages through the
+    history list (narrowed by --host when given) until the id turns up.
+    """
+    offset, page = 0, 1000
+    while True:
+        query = [("offset", offset), ("limit", page), ("include_body", "true"), ("max_body", 0)]
+        if args.host:
+            query.append(("host", args.host))
+        status, _, raw = request("GET", "/api/proxy/history", query)
+        if status != 200:
+            sys.exit(f"GET /api/proxy/history returned HTTP {status}: {raw[:300].decode(errors='replace')}")
+        entries = json.loads(raw)
+        for entry in entries:
+            if entry.get("id") == args.id:
+                entry["send_body"] = {
+                    "host": entry.get("host"),
+                    "port": entry.get("port"),
+                    "use_https": entry.get("secure"),
+                    "request": entry.get("final_request") or entry.get("request"),
+                }
+                print(json.dumps(entry, indent=2))
+                return
+        if len(entries) < page:
+            where = f" for host {args.host}" if args.host else ""
+            sys.exit(f"No proxy history entry with id {args.id}{where}")
+        offset += page
+
+
 def cmd_status(_args):
     status, _, raw = request("GET", "/api/status", timeout=10)
     print(json.dumps(json.loads(raw), indent=2) if raw.strip() else f"HTTP {status}")
@@ -246,6 +278,10 @@ def main():
     ca.add_argument("-o", "--out", help="write the raw response body to this file (PNG screenshots, reports)")
     ca.add_argument("--timeout", type=float, default=120)
     ca.set_defaults(fn=cmd_call)
+    hi = sub.add_parser("history-item")
+    hi.add_argument("id", type=int, help="Burp's message id, as rank and history listings report it")
+    hi.add_argument("--host", help="narrow the search to one host")
+    hi.set_defaults(fn=cmd_history_item)
     args = parser.parse_args()
     args.fn(args)
 
