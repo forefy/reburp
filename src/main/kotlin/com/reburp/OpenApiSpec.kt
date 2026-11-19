@@ -1319,6 +1319,7 @@ fun openApiJson(): String = """
           }
         },
         "responses": {
+          "501": { "description": "This Burp version does not implement crawling through the Montoya API (Burp 2026.11 answers 'Not yet implemented')", "content": { "application/json": { "schema": { "${'$'}ref": "#/components/schemas/ErrorResponse" } } } },
           "200": {
             "description": "Crawl task created",
             "content": {

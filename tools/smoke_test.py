@@ -525,7 +525,7 @@ def exercise_everything(c, args):
     import tempfile
     report_path = os.path.join(tempfile.gettempdir(), "reburp-smoke-report.html")
     if c.check("report written to a file", "POST", "/api/scanner/report",
-               {"format": "HTML", "path": report_path}, tolerate=(403,)) is not None:
+               {"format": "HTML", "all_issues": True, "path": report_path}, tolerate=(403,)) is not None:
         size = os.path.getsize(report_path) if os.path.exists(report_path) else 0
         c.record("report file is on disk", PASS if size else FAIL, f"{size} bytes")
         if os.path.exists(report_path):
@@ -577,7 +577,10 @@ def exercise_everything(c, args):
                 {**local, "request": status_req, "response": html_resp})
         c.check("label a session", "POST", "/api/session", {"label": "reburp smoke"}, verify=has("id"))
         c.check("import a scanner Bambda", "POST", "/api/scanner/bambda/import",
-                {"source": "return false;", "enabled": False}, tolerate=(400,))
+                # A fixed id, so repeat runs update this one entry instead of adding more.
+                {"source": "id: 7d2b6a1e-5c3f-4e8a-9b0d-3f1e2a4b5c6d\nname: reburp smoke filter\n"
+                           "function: VIEW_FILTER\nlocation: PROXY_HTTP_HISTORY\nsource: |\n  return true;\n"},
+                verify=equals("success", True))
         c.check("import a Bambda", "POST", "/api/bambda/import",
                 {"name": "reburp smoke", "source": "return true;"}, tolerate=(400,))
         c.check("generate a Bambda chain", "POST", "/api/bambda/generate-chain",
@@ -613,7 +616,7 @@ def exercise_everything(c, args):
             time.sleep(2)
             c.check("delete the audit task", "DELETE", f"/api/scanner/tasks/{tid}")
         crawl = c.check("start a crawl", "POST", "/api/scanner/crawl",
-                        {"seed_urls": [f"https://{host}/"]}, verify=has("id"), tolerate=(403,))
+                        {"seed_urls": [f"https://{host}/"]}, verify=has("id"), tolerate=(403, 501))
         if crawl:
             c.check("delete the crawl straight away", "DELETE", f"/api/scanner/tasks/{crawl['id']}")
 
