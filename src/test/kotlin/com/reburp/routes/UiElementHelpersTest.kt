@@ -195,3 +195,41 @@ class UiElementHelpersTest {
         assertNull(capMessage(null, 5))
     }
 }
+
+class RowTargetTest {
+
+    private fun tree(): javax.swing.JTree {
+        val root = javax.swing.tree.DefaultMutableTreeNode("root")
+        listOf("127.0.0.1:9090", "app.example.com").forEach { root.add(javax.swing.tree.DefaultMutableTreeNode(it)) }
+        return javax.swing.JTree(root).apply { isRootVisible = false; setSize(300, 200); doLayout() }
+    }
+
+    @org.junit.jupiter.api.Test
+    fun `a tree row is found by label, selected, and clicked inside its bounds`() {
+        val t = tree()
+        val (i, label, p) = targetRow(t, null, "example")
+        kotlin.test.assertEquals(1, i)
+        kotlin.test.assertEquals("app.example.com", label)
+        kotlin.test.assertEquals(1, t.selectionRows?.single())
+        kotlin.test.assertTrue(t.getRowBounds(1).contains(p), "point $p is outside row 1")
+    }
+
+    @org.junit.jupiter.api.Test
+    fun `a table row click avoids checkbox columns`() {
+        val model = object : javax.swing.table.DefaultTableModel(arrayOf<Array<Any>>(arrayOf(true, "reburp"), arrayOf(false, "other")), arrayOf("Loaded", "Name")) {
+            override fun getColumnClass(columnIndex: Int): Class<*> = if (columnIndex == 0) java.lang.Boolean::class.java else String::class.java
+        }
+        val table = javax.swing.JTable(model).apply { setSize(400, 100); doLayout() }
+        val (i, _, p) = targetRow(table, null, "other")
+        kotlin.test.assertEquals(1, i)
+        kotlin.test.assertEquals(1, table.columnAtPoint(p), "click must land in the Name column, not Loaded")
+        kotlin.test.assertEquals(1, table.rowAtPoint(p))
+    }
+
+    @org.junit.jupiter.api.Test
+    fun `rows on something without rows, or no match, are refused`() {
+        kotlin.test.assertFailsWith<UiBadTarget> { targetRow(javax.swing.JLabel("x"), 0, null) }
+        kotlin.test.assertFailsWith<UiNotFound> { targetRow(tree(), null, "nope") }
+        kotlin.test.assertFailsWith<UiNotFound> { targetRow(tree(), 5, null) }
+    }
+}

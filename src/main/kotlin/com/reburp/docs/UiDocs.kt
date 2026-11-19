@@ -440,7 +440,7 @@ internal fun uiSchemas(): String = """
 
       "UiClickRequest": {
         "type": "object",
-        "description": "Where to click. Give an element `id`, or `x` and `y` in the coordinates of `window`.",
+        "description": "Where to click. Give an element `id` (optionally with `row` or `row_text` for a tree, table or list), or `x` and `y` in the coordinates of `window`.",
         "properties": {
           "id": { "type": "string", "nullable": true, "description": "Element id from GET /api/ui/elements; the click lands at its centre." },
           "x": { "type": "integer", "nullable": true, "description": "Window x coordinate, used with `y` when no `id` is given." },
@@ -448,7 +448,9 @@ internal fun uiSchemas(): String = """
           "window": { "type": "string", "nullable": true, "description": "Window id for `x`/`y`; defaults to `w0`." },
           "button": { "type": "string", "default": "left", "enum": ["left", "middle", "right"], "description": "Right raises the popup trigger, which opens context menus." },
           "count": { "type": "integer", "default": 1, "minimum": 1, "maximum": 3, "description": "2 for a double-click." },
-          "modifiers": { "type": "array", "items": { "type": "string", "enum": ["shift", "ctrl", "alt", "meta"] }, "default": [], "description": "Modifier keys held during the click, for example ctrl to reload an extension from its Loaded checkbox." }
+          "modifiers": { "type": "array", "items": { "type": "string", "enum": ["shift", "ctrl", "alt", "meta"] }, "default": [], "description": "Modifier keys held during the click, for example ctrl to reload an extension from its Loaded checkbox." },
+          "row": { "type": "integer", "nullable": true, "description": "With the `id` of a tree, table or list: the zero-based row to click. The row is selected and scrolled into view first, and the click lands inside it, so a right click opens that row's context menu wherever the window is." },
+          "row_text": { "type": "string", "nullable": true, "description": "With the `id` of a tree, table or list: click the first row whose label contains this (case-insensitive), as listed in the element's `items` or by POST /api/ui/select. Table clicks avoid checkbox columns." }
         }
       },
 
