@@ -6,7 +6,7 @@ Coverage counting proves the code references the Montoya API. This proves the en
 actually answer once Burp is driving them, which is the part static analysis cannot show.
 
 Usage:
-    python3 tools/smoke_test.py [--port 9090] [--verbose]
+    python3 tools/smoke_test.py [--port 9090] [--verbose] [--traces] [--live HOST]
 
 Exit status is 1 if any check fails.
 """
@@ -206,10 +206,430 @@ def _gradle_version():
     return found.group(1) if found else None
 
 
+# ── Every endpoint, doing real work ──────────────────────────────────────────
+# The checks above guard specific regressions. These walk the rest of the documented API
+# so an endpoint that stopped answering, or answers with the wrong thing, shows up here.
+# HTTP work targets this reburp itself, so nothing leaves the machine unless --live names
+# a host. Anything that changes Burp's state is put back, and the few endpoints that leave
+# something behind the API cannot remove (Repeater, Intruder, Comparer, Organizer and
+# Decoder items, a site map entry, imported scripts) only run with --traces.
+# Never exercised: shutdown, unload with confirm, shell execution, clearing the activity
+# log or event buffer, clearing Repeater tabs or all match/replace rules, and proxy
+# intercept, which would hold the user's browser traffic.
+
+def has(*keys):
+    """Verifier: payload is an object carrying every key."""
+    def verify(p):
+        missing = [k for k in keys if not isinstance(p, dict) or k not in p]
+        return f"missing {', '.join(missing)}: {str(p)[:120]}" if missing else None
+    return verify
+
+
+def equals(key, want):
+    def verify(p):
+        got = p.get(key) if isinstance(p, dict) else None
+        return None if got == want else f"{key} = {got!r}, wanted {want!r}"
+    return verify
+
+
+def is_list(p):
+    return None if isinstance(p, list) else f"expected a list, got {type(p).__name__}"
+
+
+def contains(key, needle):
+    def verify(p):
+        got = str(p.get(key, "")) if isinstance(p, dict) else ""
+        return None if needle in got else f"{key} does not contain {needle!r}: {got[:120]}"
+    return verify
+
+
+def exercise_everything(c, args):
+    import base64
+    import time
+    local = {"host": "127.0.0.1", "port": args.port, "use_https": False}
+    status_req = (f"GET /api/status?probe=1 HTTP/1.1\r\nHost: 127.0.0.1:{args.port}\r\n"
+                  "Cookie: sid=abc\r\nAccept: */*\r\n\r\n")
+    post_req = (f"POST /api/utils/base64/encode HTTP/1.1\r\nHost: 127.0.0.1:{args.port}\r\n"
+                'Content-Type: application/json\r\n\r\n{"value":"hi"}')
+    html_resp = "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nServer: smoke\r\n\r\n<p>abc</p>"
+
+    print("\nEncoders and converters")
+    for name, path, body, want in [
+        ("url encode", "/api/utils/url/encode", {"value": "a b&c"}, "a+b%26c"),
+        ("url decode", "/api/utils/url/decode", {"value": "a%20b"}, "a b"),
+        ("url encode every char", "/api/utils/url/encode-mode",
+         {"value": "ab", "encoding": "ALL_CHARACTERS"}, "%61%62"),
+        ("base64 encode", "/api/utils/base64/encode", {"value": "hi"}, "aGk="),
+        ("base64 decode", "/api/utils/base64/decode", {"value": "aGk="}, "hi"),
+        ("base64 url-safe, no padding", "/api/utils/base64/encode-options",
+         {"value": "??>", "url_safe": True, "no_padding": True}, "Pz8-"),
+        ("base64 url-safe decode", "/api/utils/base64/decode-options",
+         {"value": "Pz8-", "url_safe": True}, "??>"),
+        ("html encode", "/api/utils/html/encode", {"value": "<a>"}, "&lt;a&gt;"),
+        ("html decode", "/api/utils/html/decode", {"value": "&lt;a&gt;"}, "<a>"),
+        ("string to hex", "/api/utils/string/to-hex", {"value": "AB"}, "4142"),
+        ("hex to string", "/api/utils/string/from-hex", {"value": "4142"}, "AB"),
+        ("md5", "/api/utils/hash", {"algorithm": "MD5", "value": "abc"},
+         "900150983cd24fb0d6963f7d28e17f72"),
+        ("sha-256 digest", "/api/utils/digest", {"algorithm": "SHA_256", "value": "abc"},
+         "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"),
+    ]:
+        c.check(name, "POST", path, body, verify=equals("result", want))
+    c.check("random string has the asked length", "GET", "/api/utils/random?length=12",
+            verify=lambda p: None if len(p.get("result", "")) == 12 else f"got {p}")
+    packed = c.check("gzip compress", "POST", "/api/utils/compress",
+                     {"value": "hello hello", "encoding": "GZIP"}, verify=has("result"))
+    if packed:
+        c.check("gzip round trip", "POST", "/api/utils/decompress",
+                {"base64": packed["result"], "encoding": "GZIP"},
+                verify=equals("result", "hello hello"))
+    token = c.check("sign a JWT", "POST", "/api/utils/jwt/encode",
+                    {"payload_json": '{"sub":"1"}', "secret": "k", "algorithm": "HS256"},
+                    verify=has("token"))
+    if token:
+        c.check("decode the JWT it signed", "POST", "/api/http/jwt/decode",
+                {"token": token["token"]},
+                verify=lambda p: None if p.get("payload", {}).get("sub") == "1" else f"got {p}")
+    c.check("security header audit flags a missing HSTS", "POST", "/api/utils/headers/analyze",
+            {"headers": {"Server": "nginx"}},
+            verify=lambda p: None if any(x.get("header") == "Strict-Transport-Security"
+                                         and x.get("status") == "missing"
+                                         for x in p.get("checks", []))
+            else f"no missing-HSTS check: {str(p)[:120]}")
+    c.check("payload list", "GET", "/api/utils/payloads",
+            verify=lambda p: None if p.get("payloads") else "no payloads")
+    c.check("keyword variance", "POST", "/api/utils/response/keywords",
+            {"responses": ["HTTP/1.1 200 OK\r\n\r\nadmin panel", "HTTP/1.1 200 OK\r\n\r\nuser"],
+             "keywords": ["admin"]},
+            verify=lambda p: None if "admin" in p.get("variant", []) else f"got {p}")
+    c.check("attribute variance sees the status change", "POST", "/api/utils/response/variations",
+            {"responses": ["HTTP/1.1 200 OK\r\n\r\na", "HTTP/1.1 404 Not Found\r\n\r\nbb"]},
+            verify=lambda p: None if "STATUS_CODE" in p.get("variant", []) else f"got {p}")
+
+    print("\nJSON editing (dotted paths)")
+    c.check("add", "POST", "/api/utils/json/add",
+            {"json": '{"a":{}}', "pointer": "a.b", "value": "2"},
+            verify=lambda p: None if json.loads(p["result"]) == {"a": {"b": 2}} else f"got {p}")
+    c.check("update", "POST", "/api/utils/json/update",
+            {"json": '{"a":1}', "pointer": "a", "value": '"x"'},
+            verify=lambda p: None if json.loads(p["result"]) == {"a": "x"} else f"got {p}")
+    c.check("remove", "POST", "/api/utils/json/remove",
+            {"json": '{"a":1,"b":2}', "pointer": "a"},
+            verify=lambda p: None if json.loads(p["result"]) == {"b": 2} else f"got {p}")
+
+    print("\nRequest and response editing")
+    c.check("parse a request", "POST", "/api/http/parse/request",
+            {"request": post_req, "include_body": True},
+            verify=lambda p: None if p.get("method") == "POST" and "hi" in str(p.get("body"))
+            else f"got {str(p)[:120]}")
+    c.check("diff two requests", "POST", "/api/http/diff",
+            {"request_a": status_req, "request_b": status_req.replace("probe=1", "probe=2")},
+            verify=contains("result", "+GET /api/status?probe=2"))
+    c.check("list parameters", "POST", "/api/http/params", {"request": status_req},
+            verify=lambda p: None if {("URL", "probe"), ("COOKIE", "sid")}
+            <= {(x["type"], x["name"]) for x in p} else f"got {p}")
+    c.check("find a reflected parameter", "POST", "/api/http/reflect",
+            {"request": "GET /?q=abc HTTP/1.1\r\nHost: a\r\n\r\n", "response": html_resp},
+            verify=lambda p: None if any(x.get("name") == "q" for x in p) else f"got {p}")
+    c.check("mutate a request", "POST", "/api/http/request/mutate",
+            {"request": status_req, "add_headers": {"X-A": "1"}, "remove_headers": ["Accept"],
+             "add_params": [{"name": "y", "value": "2", "type": "URL"}]},
+            verify=lambda p: None if "y=2" in p["result"] and "X-A: 1" in p["result"]
+            and "Accept:" not in p["result"] else f"got {p}")
+    c.check("mutate a response's status", "POST", "/api/http/response/mutate",
+            {"response": html_resp, "status_code": 404, "remove_headers": ["Server"]},
+            verify=lambda p: None if p["result"].startswith("HTTP/1.1 404 Not Found")
+            and "Server:" not in p["result"] else f"status line or headers wrong: {p['result'][:60]!r}")
+    c.check("set and drop parameters", "POST", "/api/http/message/request/parameters",
+            {"raw": status_req, "add": [{"name": "z", "value": "3", "type": "URL"}],
+             "remove": [{"name": "probe", "type": "URL"}]},
+            verify=lambda p: None if "?z=3 " in p.get("request", "") else f"got {str(p)[:120]}")
+    c.check("retarget a request", "POST", "/api/http/message/request/service",
+            {"raw": status_req, "host": "example.com", "port": 443, "secure": True},
+            verify=equals("url", "https://example.com/api/status?probe=1"))
+    c.check("rewrite a response head", "POST", "/api/http/message/response/edit",
+            {"raw": html_resp, "reason_phrase": "Fine", "add": [{"name": "X-B", "value": "2"}],
+             "remove": ["Server"]},
+            verify=lambda p: None if p.get("response", "").startswith("HTTP/1.1 200 Fine")
+            and "X-B: 2" in p["response"] and "Server:" not in p["response"] else f"got {p}")
+    c.check("markers carry their excerpt", "POST", "/api/http/message/markers",
+            {"request": status_req, "request_markers": [{"start": 0, "end": 3}], "notes": "n"},
+            verify=lambda p: None if p.get("request_markers", [{}])[0].get("excerpt") == "GET"
+            else f"got {p}")
+    c.check("CSRF PoC names the action URL", "POST", "/api/engagement/csrf-poc",
+            {"request": post_req, **local},
+            verify=contains("html", f"http://127.0.0.1:{args.port}/api/utils/base64/encode"))
+
+    print("\nSending (to this reburp, nothing leaves the machine)")
+    c.check("send a raw request", "POST", "/api/http/send", {**local, "request": status_req},
+            verify=lambda p: None if p.get("status") == 200 and '"extension"' in p.get("response", "")
+            else f"got {str(p)[:120]}")
+    c.check("send a structured request", "POST", "/api/http/send",
+            {**local, "method": "POST", "path": "/api/utils/base64/encode",
+             "headers": {"Content-Type": "application/json"}, "body": {"value": "hi"}},
+            verify=lambda p: None if "aGk=" in p.get("response", "") else f"got {str(p)[:120]}")
+    c.check("send a batch", "POST", "/api/http/send-batch",
+            {"requests": [{**local, "request": status_req}, {**local, "request": post_req}]},
+            verify=lambda p: None if [x.get("status") for x in p] == [200, 200] else f"got {str(p)[:120]}")
+    c.check("send and time it", "POST", "/api/http/message/timing",
+            {"raw": status_req, "host": "127.0.0.1", "port": args.port, "secure": False},
+            verify=equals("status_code", 200))
+    c.check("fuzz substitutes {word}", "POST", "/api/http/fuzz",
+            {"host": "127.0.0.1", "port": args.port, "https": False,
+             "path_template": "/api/{word}", "wordlist": ["status", "reburp-smoke-none"]},
+            verify=lambda p: None if [(x.get("word"), x.get("status")) for x in p]
+            == [("status", 200), ("reburp-smoke-none", 404)] else f"got {p}")
+    c.check("fuzz refuses a template with no {word}", "POST", "/api/http/fuzz",
+            {"host": "127.0.0.1", "port": args.port, "https": False,
+             "path_template": "/api/FUZZ", "wordlist": ["status"]}, expect=400)
+    c.check("rate test counts every request", "POST", "/api/http/rate-test",
+            {"host": "127.0.0.1", "port": args.port, "https": False, "method": "GET",
+             "path": "/api/status", "count": 4, "concurrency": 2},
+            verify=lambda p: None if p.get("status_distribution") == {"200": 4} else f"got {p}")
+    c.check("auth diff compares both sends", "POST", "/api/http/auth-diff",
+            {"host": "127.0.0.1", "port": args.port, "https": False, "path": "/api/status",
+             "auth_header": "Bearer smoke"},
+            verify=lambda p: None if p.get("authenticated", {}).get("status") == 200 else f"got {p}")
+    c.check("content discovery finds a real path", "POST", "/api/engagement/discover-content",
+            {**local, "base_path": "/api/", "wordlist": ["status", "reburp-smoke-none"]},
+            verify=lambda p: None if any(x.get("url", "").endswith("/api/status") for x in p)
+            and not any("reburp-smoke-none" in x.get("url", "") for x in p) else f"got {p}")
+    # The token is only fetched when the first send answers a retry_on status, so treat
+    # this endpoint's 200 as the "expired" signal to force the re-auth path.
+    c.check("send with auth injects the fetched token", "POST", "/api/http/send-with-auth",
+            {"auth": {**local, "method": "GET", "path": "/api/status", "token_path": "$.extension"},
+             "request": {**local, "request": status_req}, "retry_on": [200]},
+            verify=lambda p: None if "Bearer reburp" in str(p) else f"token not injected: {str(p)[:120]}")
+
+    print("\nRequest engine")
+    engine = c.check("create an engine", "POST", "/api/http/engine",
+                     {"name": "reburp-smoke", "concurrent_request_limit": 2}, verify=has("engine_id"))
+    if engine:
+        eid = engine["engine_id"]
+        c.check("queue two requests", "POST", f"/api/http/engine/{eid}/queue",
+                {"requests": [{**local, "request": status_req, "label": "a"},
+                              {**local, "request": post_req, "label": "b"}]},
+                verify=equals("queued", 2))
+        run = c.check("start it", "POST", f"/api/http/engine/{eid}/send", {"timeout_ms": 20000},
+                      verify=has("execution_id"))
+        if run:
+            xid = run["execution_id"]
+            c.check("execution is listed", "GET", "/api/http/engine",
+                    verify=lambda p: None if xid in p.get("executions", []) else f"got {p}")
+            c.check("queue onto the running execution", "POST",
+                    f"/api/http/engine/execution/{xid}/queue",
+                    {"requests": [{**local, "request": status_req, "label": "c"}]},
+                    tolerate=(409,))
+            c.check("pause", "POST", f"/api/http/engine/execution/{xid}/pause", tolerate=(409,))
+            c.check("resume", "POST", f"/api/http/engine/execution/{xid}/resume", tolerate=(409,))
+            c.check("await collects every result", "POST",
+                    f"/api/http/engine/execution/{xid}/await", {"timeout_ms": 20000},
+                    verify=lambda p: None if len(p.get("results", [])) >= 2 else f"got {str(p)[:160]}")
+            c.check("stats agree it completed", "GET", f"/api/http/engine/execution/{xid}/stats",
+                    verify=lambda p: None if p.get("completed", 0) >= 2 and not p.get("failed")
+                    else f"got {p}")
+            c.check("finished", "GET", f"/api/http/engine/execution/{xid}/finished",
+                    verify=equals("finished", True))
+            c.check("cancel after finishing is harmless", "POST",
+                    f"/api/http/engine/execution/{xid}/cancel", tolerate=(409,))
+            c.check("discard the execution", "DELETE", f"/api/http/engine/execution/{xid}")
+        c.check("discard the engine", "DELETE", f"/api/http/engine/{eid}")
+        c.check("no smoke handles left", "GET", "/api/http/engine",
+                verify=lambda p: None if eid not in p.get("engines", []) else f"got {p}")
+
+    print("\nHistory searches")
+    c.check("search proxy history", "GET", "/api/proxy/history/search?regex=.&limit=2&max_body=200",
+            verify=is_list)
+    c.check("search response bodies", "GET",
+            "/api/proxy/history/response-search?regex=html&limit=2", verify=is_list)
+    c.check("WebSocket history", "GET", "/api/proxy/websocket/history?limit=2", verify=is_list)
+    c.check("search WebSocket history", "GET", "/api/proxy/websocket/history/search?regex=.&limit=2",
+            verify=is_list)
+    c.check("annotate matches nothing for a nonsense regex", "PATCH", "/api/proxy/history/annotate",
+            {"regex": "reburp-smoke-no-such-[0-9]{40}", "note": "smoke"},
+            verify=lambda p: None if (p or {}).get("annotated", 0) == 0 else f"annotated something: {p}")
+    c.check("site map", "GET", "/api/sitemap?limit=2", verify=is_list)
+    c.check("search the site map", "GET", "/api/sitemap/search?regex=.&limit=2", verify=is_list)
+    c.check("site map issues", "GET", "/api/sitemap/issues?limit=2", verify=is_list)
+    c.check("find references", "POST", "/api/engagement/find-references",
+            {"query": "http", "limit": 2}, verify=is_list)
+    c.check("analyze a target", "POST", "/api/engagement/analyze-target", {"host": "127.0.0.1"},
+            verify=has("total_requests"))
+    c.check("organizer items", "GET", "/api/organizer/items", verify=is_list)
+    c.check("reburp sessions", "GET", "/api/sessions", verify=is_list)
+
+    print("\nState that is put back")
+    pref = "reburp-smoke-pref"
+    c.check("set a preference", "PUT", f"/api/preferences/{pref}", {"type": "string", "value": "1"})
+    c.check("read it back", "GET", "/api/preferences?type=string",
+            verify=lambda p: None if p.get(pref) == "1" else f"got {p}")
+    c.check("delete it", "DELETE", f"/api/preferences/{pref}?type=string")
+    c.check("it is gone", "GET", "/api/preferences?type=string",
+            verify=lambda p: None if pref not in p else f"still there: {p}")
+
+    child = "reburp_smoke_child"
+    c.check("create an extension-data child", "POST", "/api/extension-data/child", {"path": child})
+    c.check("list keys under it", "GET", f"/api/extension-data/keys/{child}", verify=is_list_or_obj)
+    c.check("delete the child", "DELETE", f"/api/extension-data/child?path={child}")
+
+    jar = "reburp-smoke.invalid"
+    c.check("set a cookie", "POST", "/api/cookies",
+            {"name": "reburp_smoke", "value": "1", "domain": jar})
+    c.check("cookie is in the jar", "GET", f"/api/cookies?domain={jar}&include_values=true",
+            verify=lambda p: None if any(x.get("name") == "reburp_smoke" for x in p) else f"got {p}")
+    c.check("delete the cookie", "DELETE", f"/api/cookies/reburp_smoke?domain={jar}")
+    c.check("cookie is gone", "GET", f"/api/cookies?domain={jar}",
+            verify=lambda p: None if not any(x.get("name") == "reburp_smoke" for x in p) else f"still there: {p}")
+
+    # Montoya can add scope rules but never remove them, so snapshot the target section
+    # first and import it back, which also exercises PUT /api/config/project.
+    target = c.check("snapshot scope", "GET", "/api/config/project?section=target", verify=has("result"))
+    if target:
+        url = f"https://{jar}/"
+        c.check("include in scope", "POST", "/api/scope/include", {"url": url})
+        c.check("now in scope", "GET", f"/api/scope/check?url={url}", verify=equals("in_scope", True))
+        c.check("scope by query", "GET", f"/api/scope?url={url}", verify=equals("in_scope", True))
+        c.check("exclude from scope", "POST", "/api/scope/exclude", {"url": url})
+        c.check("now out of scope", "GET", f"/api/scope/check?url={url}", verify=equals("in_scope", False))
+        c.check("include via POST /api/scope", "POST", "/api/scope", {"url": url})
+        c.check("in scope again", "GET", f"/api/scope?url={url}", verify=equals("in_scope", True))
+        c.check("exclude via DELETE /api/scope", "DELETE", "/api/scope", {"url": url})
+        c.check("restore scope", "PUT", "/api/config/project", {"json": json.loads(target["result"])})
+        c.check("scope is as it was", "GET", "/api/config/project?section=target",
+                verify=lambda p: None if json.loads(p["result"]) == json.loads(target["result"])
+                else "target section differs from the snapshot")
+    user_display = c.check("user config section filter", "GET", "/api/config/user?section=display",
+                           verify=lambda p: None if list(json.loads(p["result"]).get("user_options", {}))
+                           == ["display"] else f"returned more than the section: {p['result'][:80]!r}")
+    c.check("unknown config section is a 400", "GET", "/api/config/project?section=reburp_no_such",
+            expect=400)
+    if user_display:
+        c.check("write the same user section back", "PUT", "/api/config/user",
+                {"json": json.loads(user_display["result"])})
+    tasks = c.check("task engine state", "GET", "/api/config/tasks", verify=has("state"))
+    if tasks:
+        c.check("set it to what it already is", "PUT", "/api/config/tasks",
+                {"running": tasks["state"] == "RUNNING"})
+
+    print("\nScanner exports and Collaborator")
+    c.check("BCheck config is the bchecks section", "GET", "/api/scanner/bchecks/config",
+            verify=lambda p: None if list(json.loads(p["result"]).get("user_options", {})) == ["bchecks"]
+            else f"not the bchecks section: {p['result'][:80]!r}", tolerate=(403,))
+    c.check("Bambda config is the bambda section", "GET", "/api/scanner/bambda/config",
+            verify=lambda p: None if list(json.loads(p["result"])) == ["bambda"]
+            else f"not the bambda section: {p['result'][:80]!r}")
+    c.check("report download", "POST", "/api/scanner/report/download", {"format": "HTML"},
+            verify=lambda p: None if base64.b64decode(p.get("data_base64", ""))[:200].lower().find(b"<") >= 0
+            else f"not an HTML report: {str(p)[:100]}", tolerate=(403,))
+    import os
+    import tempfile
+    report_path = os.path.join(tempfile.gettempdir(), "reburp-smoke-report.html")
+    if c.check("report written to a file", "POST", "/api/scanner/report",
+               {"format": "HTML", "path": report_path}, tolerate=(403,)) is not None:
+        size = os.path.getsize(report_path) if os.path.exists(report_path) else 0
+        c.record("report file is on disk", PASS if size else FAIL, f"{size} bytes")
+        if os.path.exists(report_path):
+            os.remove(report_path)
+    c.check("consolidate issues", "POST", "/api/scanner/issues/consolidate", {"severities": ["HIGH"]},
+            tolerate=(403,))
+    c.check("collaborator server", "GET", "/api/collaborator/server", verify=has("address"),
+            tolerate=(403,))
+    collab = c.check("collaborator payload", "POST", "/api/collaborator/generate", {},
+                     verify=has("payload", "secret_key"), tolerate=(403,))
+    c.check("default generator payload", "POST", "/api/collaborator/generate/default", {},
+            verify=has("payload"), tolerate=(403,))
+    if collab:
+        from urllib.parse import quote
+        key = quote(collab["secret_key"], safe="")
+        c.check("poll it", "GET", f"/api/collaborator/poll/{key}", verify=is_list_or_obj)
+        c.check("poll with detail", "GET", f"/api/collaborator/interactions/{key}",
+                verify=is_list_or_obj)
+
+    print("\nAI, WebSockets and refusals")
+    ai = c.check("AI status", "GET", "/api/ai/status", verify=has("enabled"))
+    if ai and ai.get("enabled") and args.live:
+        c.check("AI chat", "POST", "/api/ai/chat",
+                {"messages": [{"role": "user", "content": "Reply with the single word ok."}]})
+    c.check("WebSocket connections", "GET", "/api/websocket", verify=is_list)
+    c.check("WebSocket connect to a non-WebSocket endpoint fails cleanly", "POST", "/api/websocket/connect",
+            {**local, "path": "/api/status"}, expect=502, tolerate=(400, 500))
+    c.check("intercept state explains itself", "GET", "/api/proxy/intercept", verify=has("note"))
+    for m, suffix, body in [("POST", "/send-text", {"message": "x"}),
+                            ("POST", "/send-binary", {"base64": "eA=="}),
+                            ("GET", "/messages", None), ("DELETE", "", None)]:
+        c.check(f"unknown WebSocket id is a 404 ({m} {suffix or '/'})", m,
+                f"/api/websocket/reburp-smoke-none{suffix}", body, expect=404)
+    c.check("unload needs confirm", "POST", "/api/meta/extension/unload", {"confirm": False}, expect=400)
+    c.check("raw shell refused while disabled", "POST", "/api/utils/shell/execute-raw",
+            {"command_line": "true"}, expect=403, tolerate=(200,))
+
+    if args.traces:
+        print("\nTools that keep what they are sent (--traces)")
+        c.check("send to Repeater", "POST", "/api/repeater",
+                {**local, "request": status_req, "tab_name": "reburp smoke"})
+        c.check("send to Intruder", "POST", "/api/intruder",
+                {**local, "request": status_req, "tab_name": "reburp smoke"})
+        c.check("send to Comparer", "POST", "/api/comparer", {"items": ["a", "b"]})
+        c.check("send to Decoder", "POST", "/api/engagement/send-to-decoder",
+                {"base64": base64.b64encode(b"reburp smoke").decode()})
+        c.check("send to Organizer", "POST", "/api/organizer/send", {**local, "request": status_req})
+        c.check("add a site map entry", "POST", "/api/sitemap/add",
+                {**local, "request": status_req, "response": html_resp})
+        c.check("label a session", "POST", "/api/session", {"label": "reburp smoke"}, verify=has("id"))
+        c.check("import a scanner Bambda", "POST", "/api/scanner/bambda/import",
+                {"source": "return false;", "enabled": False}, tolerate=(400,))
+        c.check("import a Bambda", "POST", "/api/bambda/import",
+                {"name": "reburp smoke", "source": "return true;"}, tolerate=(400,))
+        c.check("generate a Bambda chain", "POST", "/api/bambda/generate-chain",
+                {"name": "reburp smoke", "host": "127.0.0.1", "port": args.port, "https": False,
+                 "steps": [{"method": "GET", "path": "/api/status"}]}, verify=has("source"))
+        c.check("import a BCheck, disabled", "POST", "/api/scanner/bchecks/import",
+                {"source": 'metadata:\n    language: v2-beta\n    name: "reburp smoke"\n'
+                           'given response then\n    if "reburp-smoke-never" in {latest.response} then\n'
+                           '        report issue:\n            severity: info\n            confidence: firm\n'
+                           '            detail: "smoke"\n    end if\n', "enabled": False}, tolerate=(403,))
+
+    if args.live:
+        host = args.live
+        print(f"\nLive traffic to {host} (--live)")
+        live = {"host": host, "port": 443, "use_https": True}
+        c.check("send over HTTP/1.1", "POST", "/api/http/send",
+                {**live, "method": "GET", "path": "/"},
+                verify=lambda p: None if p.get("status") else f"no status: {str(p)[:120]}")
+        c.check("send over HTTP/2", "POST", "/api/http/send/http2",
+                {"host": host, "request": f"GET / HTTP/2\r\nHost: {host}\r\n\r\n"},
+                verify=lambda p: None if p.get("status") else f"no status: {str(p)[:120]}")
+        task = c.check("passive audit of one request", "POST", "/api/scanner/audit/mode",
+                       {"mode": "PASSIVE", **live,
+                        "requests": [f"GET / HTTP/1.1\r\nHost: {host}\r\n\r\n"]},
+                       verify=has("id"), tolerate=(403,))
+        if task:
+            tid = task["id"]
+            c.check("audit task status", "GET", f"/api/scanner/tasks/{tid}", verify=has("id"))
+            c.check("audit progress", "GET", f"/api/scanner/tasks/{tid}/detail")
+            c.check("feed the audit an exchange", "POST", f"/api/scanner/tasks/{tid}/add",
+                    {"request": f"GET /robots.txt HTTP/1.1\r\nHost: {host}\r\n\r\n", "host": host,
+                     "port": 443, "secure": True})
+            time.sleep(2)
+            c.check("delete the audit task", "DELETE", f"/api/scanner/tasks/{tid}")
+        crawl = c.check("start a crawl", "POST", "/api/scanner/crawl",
+                        {"seed_urls": [f"https://{host}/"]}, verify=has("id"), tolerate=(403,))
+        if crawl:
+            c.check("delete the crawl straight away", "DELETE", f"/api/scanner/tasks/{crawl['id']}")
+
+
+def is_list_or_obj(p):
+    return None if isinstance(p, (list, dict)) else f"unexpected {type(p).__name__}"
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--port", type=int, default=9090)
     parser.add_argument("--verbose", action="store_true")
+    parser.add_argument("--traces", action="store_true",
+                        help="also run endpoints that leave items in Burp the API cannot remove")
+    parser.add_argument("--live", metavar="HOST",
+                        help="send real traffic to HOST and run a passive audit and a crawl on it")
     args = parser.parse_args()
     c = Client(args.port, args.verbose)
 
@@ -680,6 +1100,15 @@ def main():
                         r.get("comment") == "reburp smoke test" and r.get("is_simple_match")
                         for r in p.get("rules", []))
                     else "is_simple_match lost - category mapping is broken")
+            c.check("update the test rule", "PUT", f"/api/proxy/match-replace/{idx}",
+                    {"rule_type": "request_header", "string_match": "X-Reburp-Smoke",
+                     "string_replace": "X-Reburp-Smoke: 2", "is_simple_match": True,
+                     "enabled": False, "comment": "reburp smoke test"})
+            c.check("update took", "GET", "/api/proxy/match-replace",
+                    verify=lambda p: None if any(r.get("comment") == "reburp smoke test"
+                                                 and r.get("string_replace") == "X-Reburp-Smoke: 2"
+                                                 for r in p.get("rules", []))
+                    else "replacement unchanged after PUT")
             if c.check("delete the test rule", "DELETE", f"/api/proxy/match-replace/{idx}") is not None:
                 c.check("test rule is really gone", "GET", "/api/proxy/match-replace",
                         verify=lambda p: None if not any(
@@ -711,6 +1140,8 @@ def main():
              "confidence": "CERTAIN", "base_url": "https://example.com/"}, expect=400,
             verify=lambda p: None if "Allowed values" in (p or {}).get("error", "")
             else f"error does not name the allowed values: {p}")
+
+    exercise_everything(c, args)
 
     passed = sum(1 for _, s, _ in c.results if s == PASS)
     failed = sum(1 for _, s, _ in c.results if s == FAIL)

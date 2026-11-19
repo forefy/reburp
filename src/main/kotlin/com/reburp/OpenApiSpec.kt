@@ -521,7 +521,7 @@ fun openApiJson(): String = """
       "post": {
         "tags": ["Site Map"],
         "summary": "Add URL to scope",
-        "description": "**[Montoya API]** Adds the given URL to Burp's target scope.",
+        "description": "**[Montoya API]** Adds the given URL to Burp's target scope. Same as POST /api/scope/include.",
         "operationId": "addToScope",
         "x-api-source": "montoya",
         "requestBody": {
@@ -548,7 +548,7 @@ fun openApiJson(): String = """
       "delete": {
         "tags": ["Site Map"],
         "summary": "Remove URL from scope",
-        "description": "**[Montoya API]** Removes the given URL from Burp's target scope.",
+        "description": "**[Montoya API]** Takes the given URL out of Burp's target scope. Montoya cannot delete scope rules, so this adds an exclude rule (and drops a matching include). Same as POST /api/scope/exclude.",
         "operationId": "removeFromScope",
         "x-api-source": "montoya",
         "requestBody": {
@@ -1010,8 +1010,9 @@ fun openApiJson(): String = """
         "parameters": [
           { "name": "domain",             "in": "query", "schema": { "type": "string" },  "description": "Filter by domain (exact match)" },
           { "name": "scope_only",         "in": "query", "schema": { "type": "boolean", "default": false }, "description": "Only return cookies for in-scope domains" },
-          { "name": "include_values",     "in": "query", "schema": { "type": "boolean", "default": true  }, "description": "Include cookie values in response" },
-          { "name": "include_subdomains", "in": "query", "schema": { "type": "boolean", "default": false }, "description": "Include cookies matching subdomains" }
+          { "name": "include_values",     "in": "query", "schema": { "type": "boolean", "default": false }, "description": "Include cookie values in response (redacted otherwise)" },
+          { "name": "include_subdomains", "in": "query", "schema": { "type": "boolean", "default": true  }, "description": "With domain, also match cookies set for its subdomains" },
+          { "name": "include_expired",    "in": "query", "schema": { "type": "boolean", "default": false }, "description": "Also list expired cookies. Burp keeps them in the jar, including ones removed with DELETE, but never sends them." }
         ],
         "responses": {
           "200": {
@@ -1538,12 +1539,12 @@ fun openApiJson(): String = """
       "get": {
         "tags": ["Config"],
         "summary": "Get project configuration",
-        "description": "**[Montoya Config]** Exports project options as JSON. Use ?section=<name> to export a specific section (e.g. ?section=proxy exports only proxy rules; ?section=scanner exports scanner config including BChecks). Omit section to export all.",
+        "description": "**[Montoya Config]** Exports project options as JSON. Use ?section=<name> to export a specific section (e.g. ?section=proxy exports only proxy rules; Bambda filters are in bambda). An unknown section is a 400 that lists the real ones. Omit section to export all.",
         "operationId": "getProjectConfig",
         "x-api-source": "montoya-config",
         "parameters": [
           { "name": "path", "in": "query", "schema": { "type": "string" }, "description": "Dot-notation path to a config sub-tree, e.g. project_options.connections. Repeat it or comma-separate to export several. Same as section." },
-          { "name": "section", "in": "query", "schema": { "type": "string" }, "description": "Optional config section name to export (e.g. proxy, scanner). Omit to export all." }
+          { "name": "section", "in": "query", "schema": { "type": "string" }, "description": "Top-level section to export, e.g. proxy, target or bambda. Omit to export all." }
         ],
         "responses": {
           "200": {
@@ -1588,12 +1589,12 @@ fun openApiJson(): String = """
       "get": {
         "tags": ["Config"],
         "summary": "Get user configuration",
-        "description": "**[Montoya Config]** Exports user options as JSON. Use ?section=<name> to export a specific section (e.g. ?section=proxy exports proxy user settings; Bambda filters are in the proxy section). Omit section to export all.",
+        "description": "**[Montoya Config]** Exports user options as JSON. Use ?section=<name> to export a specific section; a bare name means user_options.<name>, so ?section=proxy exports user_options.proxy. An unknown section is a 400 that lists the real ones. Omit section to export all.",
         "operationId": "getUserConfig",
         "x-api-source": "montoya-config",
         "parameters": [
           { "name": "path", "in": "query", "schema": { "type": "string" }, "description": "Dot-notation path to a sub-tree, e.g. user_options.extender. Repeat it or comma-separate to export several. Same as section." },
-          { "name": "section", "in": "query", "schema": { "type": "string" }, "description": "Optional config section name to export (e.g. proxy, scanner). Omit to export all." }
+          { "name": "section", "in": "query", "schema": { "type": "string" }, "description": "Section to export, e.g. proxy or bchecks (read as user_options.<name>). Omit to export all." }
         ],
         "responses": {
           "200": {
@@ -2928,7 +2929,7 @@ fun openApiJson(): String = """
       "get": {
         "tags": ["Scanner"],
         "summary": "Export scanner config (BChecks)",
-        "description": "**[Montoya Config]** Exports the raw Burp scanner project config section as JSON. BCheck scripts are stored here. Use PUT /api/config/project with modified JSON to update them. Pro only.",
+        "description": "**[Montoya Config]** Exports the user_options.bchecks section, which lists the imported BCheck scripts. Use PUT /api/config/user with modified JSON to update it. Pro only.",
         "operationId": "getScannerBchecksConfig",
         "x-api-source": "montoya-config",
         "responses": {
@@ -2945,7 +2946,7 @@ fun openApiJson(): String = """
       "get": {
         "tags": ["Scanner"],
         "summary": "Export user config (Bambdas)",
-        "description": "**[Montoya Config]** Exports the raw Burp user options JSON. Bambda filters are stored here. Use PUT /api/config/user with modified JSON to update them.",
+        "description": "**[Montoya Config]** Exports the project's bambda section, which holds the Bambda display and capture filters. Use PUT /api/config/project with modified JSON to update it.",
         "operationId": "getScannerBambdaConfig",
         "x-api-source": "montoya-config",
         "responses": {
@@ -3747,7 +3748,7 @@ ${extraPaths()}
         "description": "Burp config JSON to merge",
         "required": ["json"],
         "properties": {
-          "json": { "type": "object", "description": "JSON object matching Burp's config schema to merge into the current config" }
+          "json": { "description": "Burp config to merge into the current config: a JSON object, or the same JSON as a string (as GET returns it in 'result')" }
         }
       },
 

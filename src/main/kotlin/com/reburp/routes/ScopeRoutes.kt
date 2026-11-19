@@ -12,11 +12,8 @@ import kotlinx.serialization.json.*
 // [Montoya API] - api.scope()
 fun Routing.scopeRoutes(api: MontoyaApi) {
 
-    // The spec documents this as GET /api/scope/rules, but it was only ever registered at
-    // /api/scope, so the documented path answered 404 and the working one was undocumented.
-    // Both are served now: /api/scope/rules is the contract, /api/scope stays for callers
-    // written against the old behaviour.
-    get("/api/scope") { respondScopeRules(api, call) }
+    // GET /api/scope (with ?url) is the in-scope check in siteMapRoutes, which registers
+    // first and so always answered it; a second handler here for the rules was dead code.
     get("/api/scope/rules") { respondScopeRules(api, call) }
 
     route("/api/scope") {

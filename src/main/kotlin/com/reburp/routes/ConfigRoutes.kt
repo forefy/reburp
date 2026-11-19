@@ -23,6 +23,10 @@ fun Routing.configRoutes(api: MontoyaApi) {
             runCatching {
                 val json = if (paths.isNotEmpty()) api.burpSuite().exportProjectOptionsAsJson(*paths.toTypedArray())
                            else api.burpSuite().exportProjectOptionsAsJson()
+                val missing = missingConfigPaths(json, paths)
+                if (missing.isNotEmpty()) return@get call.respond(HttpStatusCode.BadRequest, ErrorResponse(
+                    "Unknown section ${missing.joinToString(", ") { "'$it'" }}. Project sections: " +
+                    configChildren(api.burpSuite().exportProjectOptionsAsJson()).joinToString(", ")))
                 call.respond(StringResult(json))
             }.onFailure { call.respond(HttpStatusCode.BadRequest, ErrorResponse("Unknown or invalid section '${section}': ${it.message}")) }
         }
@@ -32,7 +36,7 @@ fun Routing.configRoutes(api: MontoyaApi) {
                 return@put call.respond(HttpStatusCode.BadRequest, ErrorResponse(it.message ?: "Bad request body"))
             }
             runCatching {
-                api.burpSuite().importProjectOptionsFromJson(req.json)
+                api.burpSuite().importProjectOptionsFromJson(req.text())
                 call.respond(MessageResponse("Project options applied"))
             }.onFailure { call.respond(HttpStatusCode.BadRequest, ErrorResponse(it.message ?: "Error")) }
         }
@@ -40,11 +44,16 @@ fun Routing.configRoutes(api: MontoyaApi) {
         // ── User options ──────────────────────────────────────────────────────
 
         get("/user") {
-            val paths = configPaths(call.request.queryParameters)
+            // User options all sit under user_options, so ?section=proxy means user_options.proxy.
+            val paths = configPaths(call.request.queryParameters).map(::qualifyUserPath)
             val section = paths.joinToString(", ")
             runCatching {
                 val json = if (paths.isNotEmpty()) api.burpSuite().exportUserOptionsAsJson(*paths.toTypedArray())
                            else api.burpSuite().exportUserOptionsAsJson()
+                val missing = missingConfigPaths(json, paths)
+                if (missing.isNotEmpty()) return@get call.respond(HttpStatusCode.BadRequest, ErrorResponse(
+                    "Unknown section ${missing.joinToString(", ") { "'$it'" }}. User sections: " +
+                    configChildren(api.burpSuite().exportUserOptionsAsJson(), "user_options").joinToString(", ")))
                 call.respond(StringResult(json))
             }.onFailure { call.respond(HttpStatusCode.BadRequest, ErrorResponse("Unknown or invalid section '${section}': ${it.message}")) }
         }
@@ -54,7 +63,7 @@ fun Routing.configRoutes(api: MontoyaApi) {
                 return@put call.respond(HttpStatusCode.BadRequest, ErrorResponse(it.message ?: "Bad request body"))
             }
             runCatching {
-                api.burpSuite().importUserOptionsFromJson(req.json)
+                api.burpSuite().importUserOptionsFromJson(req.text())
                 call.respond(MessageResponse("User options applied"))
             }.onFailure { call.respond(HttpStatusCode.BadRequest, ErrorResponse(it.message ?: "Error")) }
         }
@@ -118,3 +127,25 @@ private fun configPaths(query: io.ktor.http.Parameters): List<String> =
         .flatMap { it.split(',') }
         .map { it.trim() }
         .filter { it.isNotEmpty() }
+
+internal fun qualifyUserPath(path: String): String =
+    if (path == "user_options" || path.startsWith("user_options.")) path else "user_options.$path"
+
+/**
+ * Paths that are not in an export. Burp answers an unknown path with the whole config rather
+ * than an error, so ?section=scanner looked like it worked and returned every section.
+ */
+internal fun missingConfigPaths(json: String, paths: List<String>): List<String> {
+    if (paths.isEmpty()) return emptyList()
+    val root = runCatching { Json.parseToJsonElement(json) as? JsonObject }.getOrNull() ?: return paths
+    return paths.filter { p ->
+        p.split('.').fold(root as JsonElement?) { node, key -> (node as? JsonObject)?.get(key) } == null
+    }
+}
+
+/** Keys at the top of a config export, or under [under] when given. */
+internal fun configChildren(json: String, under: String? = null): List<String> {
+    val root = runCatching { Json.parseToJsonElement(json) as? JsonObject }.getOrNull() ?: return emptyList()
+    val node = if (under == null) root else root[under] as? JsonObject ?: return emptyList()
+    return node.keys.sorted()
+}
